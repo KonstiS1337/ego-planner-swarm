@@ -11,251 +11,237 @@ AStar::~AStar()
                 delete GridNodeMap_[i][j][k];
 }
 
-void AStar::initGridMap(GridMap::Ptr occ_map, const Eigen::Vector3i pool_size)
-{
-    POOL_SIZE_ = pool_size;
-    CENTER_IDX_ = pool_size / 2;
 
-    GridNodeMap_ = new GridNodePtr **[POOL_SIZE_(0)];
-    for (int i = 0; i < POOL_SIZE_(0); i++)
+double Astar::getDiagHeu(const octomap::point3d& node1, const octomap::point3d& node2)
     {
-        GridNodeMap_[i] = new GridNodePtr *[POOL_SIZE_(1)];
-        for (int j = 0; j < POOL_SIZE_(1); j++)
+        // Calculate the differences in each coordinate (x, y, z)
+        double dx = std::abs(node1.x() - node2.x());
+        double dy = std::abs(node1.y() - node2.y());
+        double dz = std::abs(node1.z() - node2.z());
+
+        // Heuristic calculation based on diagonal distance
+        double h = 0.0;
+        int diag = std::min(std::min(dx, dy), dz);
+        dx -= diag;
+        dy -= diag;
+        dz -= diag;
+
+        // Handle the cases where dx, dy, dz are 0 for different combinations
+        if (dx == 0)
         {
-            GridNodeMap_[i][j] = new GridNodePtr[POOL_SIZE_(2)];
-            for (int k = 0; k < POOL_SIZE_(2); k++)
+            h = 1.0 * std::sqrt(3.0) * diag + std::sqrt(2.0) * std::min(dy, dz) + 1.0 * std::abs(dy - dz);
+        }
+        if (dy == 0)
+        {
+            h = 1.0 * std::sqrt(3.0) * diag + std::sqrt(2.0) * std::min(dx, dz) + 1.0 * std::abs(dx - dz);
+        }
+        if (dz == 0)
+        {
+            h = 1.0 * std::sqrt(3.0) * diag + std::sqrt(2.0) * std::min(dx, dy) + 1.0 * std::abs(dx - dy);
+        }
+
+        return h;
+    }
+
+
+double Astar::getManhHeu(const octomap::point3d& node1, const octomap::point3d& node2)
+    {
+        // Calculate the differences in each coordinate (x, y, z)
+        double dx = std::abs(node1.x() - node2.x());
+        double dy = std::abs(node1.y() - node2.y());
+        double dz = std::abs(node1.z() - node2.z());
+
+        return dx + dy + dz;
+    }
+
+double AStar::getEuclHeu(const octomap::point3d& node1, const octomap::point3d& node2)
+{
+    return (node2 - node1).norm();
+}
+
+void AStar::retrievePath(std::shared<Node> goal_node)
+{
+    gridPath_.clear();
+    for (auto node = goal_node; node != nullptr; node = node->parent)
+    {
+        gridPath_.push_back(&(node->pos));
+    }
+    std::reverse(gridPath_.begin(), gridPath_.end());
+
+    double duration = (rclcpp::Clock().now() - time_1).seconds();
+    RCLCPP_INFO(rclcpp::get_logger("AstarSearchOctomap"),
+                "A* path found! %.3fs, %d iterations, %zu points.",
+                duration, iter, gridPath_.size());
+    return;
+}
+
+bool Astar::isOccupied(const octomap::point3d& p) {
+    auto node = octree_.search(p);
+    return node && octree_.isNodeOccupied(node);
+}
+
+bool AStar::adjustStartEndPointsWithOctoMap(
+    const Eigen::Vector3d& start_pt_in,
+    const Eigen::Vector3d& end_pt_in,
+    octomap::point3d& start_voxel,
+    octomap::point3d& end_voxel)
+{
+    // Convert Eigen::Vector3d → octomap::point3d
+    Eigen::Vector3d start_pt = start_pt_in;
+    Eigen::Vector3d end_pt   = end_pt_in;
+
+    start_voxel = octomap::point3d(start_pt.x(), start_pt.y(), start_pt.z());
+    end_voxel   = octomap::point3d(end_pt.x(), end_pt.y(), end_pt.z());
+
+
+    // Helper to check map boundaries
+    auto inBounds = [&](const octomap::point3d& p) {
+        double min_x, min_y, min_z;
+        double max_x, max_y, max_z;
+        octree_.getMetricMin(min_x, min_y, min_z);
+        octree_.getMetricMax(max_x, max_y, max_z);
+        return (p.x() >= min_x && p.x() <= max_x &&
+                p.y() >= min_y && p.y() <= max_y &&
+                p.z() >= min_z && p.z() <= max_z);
+    };
+
+    int iter = 0;
+
+    // Move start point out of obstacle
+    if (isOccupied(start_voxel))
+    {
+        Eigen::Vector3d dir = (start_pt - end_pt).normalized();
+        while (isOccupied(start_voxel))
+        {
+            start_pt += dir * step_size_;
+            start_voxel = octomap::point3d(start_pt.x(), start_pt.y(), start_pt.z());
+            iter++;
+
+            if (iter > MAX_SHIFT_ITER || !inBounds(start_voxel))
             {
-                GridNodeMap_[i][j][k] = new GridNode;
+                RCLCPP_WARN(rclcpp::get_logger("adjustStartEndPointsWithOctoMap"),
+                            "No free voxel found for start point (max_iters reached or out of map)");
+                return false;
             }
         }
     }
 
-    grid_map_ = occ_map;
-}
-
-double AStar::getDiagHeu(GridNodePtr node1, GridNodePtr node2)
-{
-    double dx = abs(node1->index(0) - node2->index(0));
-    double dy = abs(node1->index(1) - node2->index(1));
-    double dz = abs(node1->index(2) - node2->index(2));
-
-    double h = 0.0;
-    int diag = min(min(dx, dy), dz);
-    dx -= diag;
-    dy -= diag;
-    dz -= diag;
-
-    if (dx == 0)
+    iter = 0;
+    // Move end point out of obstacle
+    if (isOccupied(end_voxel))
     {
-        h = 1.0 * sqrt(3.0) * diag + sqrt(2.0) * min(dy, dz) + 1.0 * abs(dy - dz);
-    }
-    if (dy == 0)
-    {
-        h = 1.0 * sqrt(3.0) * diag + sqrt(2.0) * min(dx, dz) + 1.0 * abs(dx - dz);
-    }
-    if (dz == 0)
-    {
-        h = 1.0 * sqrt(3.0) * diag + sqrt(2.0) * min(dx, dy) + 1.0 * abs(dx - dy);
-    }
-    return h;
-}
-
-double AStar::getManhHeu(GridNodePtr node1, GridNodePtr node2)
-{
-    double dx = abs(node1->index(0) - node2->index(0));
-    double dy = abs(node1->index(1) - node2->index(1));
-    double dz = abs(node1->index(2) - node2->index(2));
-
-    return dx + dy + dz;
-}
-
-double AStar::getEuclHeu(GridNodePtr node1, GridNodePtr node2)
-{
-    return (node2->index - node1->index).norm();
-}
-
-vector<GridNodePtr> AStar::retrievePath(GridNodePtr current)
-{
-    vector<GridNodePtr> path;
-    path.push_back(current);
-
-    while (current->cameFrom != NULL)
-    {
-        current = current->cameFrom;
-        path.push_back(current);
-    }
-
-    return path;
-}
-
-bool AStar::ConvertToIndexAndAdjustStartEndPoints(Vector3d start_pt, Vector3d end_pt, Vector3i &start_idx, Vector3i &end_idx)
-{
-    if (!Coord2Index(start_pt, start_idx) || !Coord2Index(end_pt, end_idx))
-        return false;
-
-    if (checkOccupancy(Index2Coord(start_idx)))
-    {
-        // RCLCPP_WARN(rclcpp::get_logger("ConvertToIndexAndAdjustStartEndPoints"), "Start point is insdide an obstacle.");
-        do
+        Eigen::Vector3d dir = (end_pt - start_pt).normalized();
+        while (isOccupied(end_voxel))
         {
-            start_pt = (start_pt - end_pt).normalized() * step_size_ + start_pt;
-            if (!Coord2Index(start_pt, start_idx))
-                return false;
-        } while (checkOccupancy(Index2Coord(start_idx)));
-    }
+            end_pt += dir * step_size_;
+            end_voxel = octomap::point3d(end_pt.x(), end_pt.y(), end_pt.z());
+            iter++;
 
-    if (checkOccupancy(Index2Coord(end_idx)))
-    {
-        // RCLCPP_WARN(rclcpp::get_logger("ConvertToIndexAndAdjustStartEndPoints"), "End point is insdide an obstacle.");
-        do
-        {
-            end_pt = (end_pt - start_pt).normalized() * step_size_ + end_pt;
-            if (!Coord2Index(end_pt, end_idx))
+            if (iter > MAX_SHIFT_ITER || !inBounds(end_voxel))
+            {
+                RCLCPP_WARN(rclcpp::get_logger("adjustStartEndPointsWithOctoMap"),
+                            "No free voxel found for end point (max_iters reached or out of map)");
                 return false;
-        } while (checkOccupancy(Index2Coord(end_idx)));
+            }
+        }
     }
 
     return true;
 }
 
+
+
 bool AStar::AstarSearch(const double step_size, Vector3d start_pt, Vector3d end_pt)
 {
-    rclcpp::Time time_1 = rclcpp::Clock().now();
-    ++rounds_;
+
+    if (!octree_)
+    {
+        RCLCPP_ERROR(rclcpp::get_logger("AstarSearchOctomap"), "Octree is null!");
+        return false;
+    }
+    rclcpp::Time time = rclcpp::Clock().now();
+    ++rounds_; //TODO this seems not necessary
 
     step_size_ = step_size;
     inv_step_size_ = 1 / step_size;
     center_ = (start_pt + end_pt) / 2;
 
-    Vector3i start_idx, end_idx;
-    if (!ConvertToIndexAndAdjustStartEndPoints(start_pt, end_pt, start_idx, end_idx))
+    octomap::point3d start_pt_shifted, end_pt_shifted;
+    if (!adjustStartEndPointsWithOctoMap(start_pt, end_pt, start_pt_shifted, end_pt_shifted))
     {
         RCLCPP_ERROR(rclcpp::get_logger("AstarSearch"), "Unable to handle the initial or end point, force return!");
         return false;
     }
 
-    // if ( start_pt(0) > -1 && start_pt(0) < 0 )
-    //     cout << "start_pt=" << start_pt.transpose() << " end_pt=" << end_pt.transpose() << endl;
+    
 
-    GridNodePtr startPtr = GridNodeMap_[start_idx(0)][start_idx(1)][start_idx(2)];
-    GridNodePtr endPtr = GridNodeMap_[end_idx(0)][end_idx(1)][end_idx(2)];
-
-    std::priority_queue<GridNodePtr, std::vector<GridNodePtr>, NodeComparator> empty;
+    std::priority_queue<std::shared_ptr<Node>, std::vector<shared_ptr<Node>>, NodeComparator> empty;
     openSet_.swap(empty);
+    unordered_map<octomap::OcTreeKey, shared_ptr<Node>, octomap::OcTreeKey::KeyHash> visited;
+    // Init start node for search algo
 
-    GridNodePtr neighborPtr = NULL;
-    GridNodePtr current = NULL;
 
-    startPtr->index = start_idx;
-    startPtr->rounds = rounds_;
-    startPtr->gScore = 0;
-    startPtr->fScore = getHeu(startPtr, endPtr);
-    startPtr->state = GridNode::OPENSET; //put start node in open set
-    startPtr->cameFrom = NULL;
-    openSet_.push(startPtr); //put start in open set
+    auto startNode = make_shared<Node>(start_pt_shifted, 0.0, getHeuristic(start_pt_shifted, end_pt_shifted));
+    openSet.push(startNode);
+    double resolution = octree_->getResolution();
+    bool success = false;
+    shared_ptr<Node> goalNode = nullptr;
 
-    endPtr->index = end_idx;
+    int iter = 0;
 
-    double tentative_gScore;
-
-    int num_iter = 0;
-    while (!openSet_.empty())
+    while (!openSet.empty())
     {
-        num_iter++;
-        current = openSet_.top();
-        openSet_.pop();
+        iter++;
+        auto current = openSet.top();
+        openSet.pop();
 
-        // if ( num_iter < 10000 )
-        //     cout << "current=" << current->index.transpose() << endl;
-
-        if (current->index(0) == endPtr->index(0) && current->index(1) == endPtr->index(1) && current->index(2) == endPtr->index(2))
+        if ((current->pos - end_pt_shifted).norm() < resolution * 1.5)
         {
-            // ros::Time time_2 = ros::Time::now();
-            // printf("\033[34mA star iter:%d, time:%.3f\033[0m\n",num_iter, (time_2 - time_1).toSec()*1000);
-            // if((time_2 - time_1).toSec() > 0.1)
-            //     ROS_WARN("Time consume in A star path finding is %f", (time_2 - time_1).toSec() );
-            gridPath_ = retrievePath(current);
-            return true;
+            success = true;
+            goalNode = current;
+            break;
         }
-        current->state = GridNode::CLOSEDSET; //move current node from open set to closed set.
-
+        // Generate 26 neighboring nodes (3D Moore neighborhood)
         for (int dx = -1; dx <= 1; dx++)
             for (int dy = -1; dy <= 1; dy++)
                 for (int dz = -1; dz <= 1; dz++)
                 {
                     if (dx == 0 && dy == 0 && dz == 0)
+                        continue; //dont add the current voxel to the queue
+
+                    octomap::point3d neighbor = current->pos + octomap::point3d(dx * resolution, dy * resolution, dz * resolution);
+                    if (!isOccupied(neighbor))
                         continue;
 
-                    Vector3i neighborIdx;
-                    neighborIdx(0) = (current->index)(0) + dx;
-                    neighborIdx(1) = (current->index)(1) + dy;
-                    neighborIdx(2) = (current->index)(2) + dz;
+                    double cost = sqrt(dx * dx + dy * dy + dz * dz) * resolution;
+                    double tentative_g = current->gScore + cost;
 
-                    if (neighborIdx(0) < 1 || neighborIdx(0) >= POOL_SIZE_(0) - 1 || neighborIdx(1) < 1 || neighborIdx(1) >= POOL_SIZE_(1) - 1 || neighborIdx(2) < 1 || neighborIdx(2) >= POOL_SIZE_(2) - 1)
-                    {
+                    // Compute voxel key
+                    octomap::OcTreeKey key;
+                    if (!octree_->coordToKeyChecked(neighbor, key))
                         continue;
-                    }
 
-                    neighborPtr = GridNodeMap_[neighborIdx(0)][neighborIdx(1)][neighborIdx(2)];
-                    neighborPtr->index = neighborIdx;
-
-                    bool flag_explored = neighborPtr->rounds == rounds_;
-
-                    if (flag_explored && neighborPtr->state == GridNode::CLOSEDSET)
+                    auto found = visited.find(key);
+                    if (found == visited.end() || tentative_g < found->second->gScore) //if we not explored the node or if the gScore of an existing node is lower than the next computed cost we add the node to the list
                     {
-                        continue; //in closed set.
-                    }
-
-                    neighborPtr->rounds = rounds_;
-
-                    if (checkOccupancy(Index2Coord(neighborPtr->index)))
-                    {
-                        continue;
-                    }
-
-                    double static_cost = sqrt(dx * dx + dy * dy + dz * dz);
-                    tentative_gScore = current->gScore + static_cost;
-
-                    if (!flag_explored)
-                    {
-                        //discover a new node
-                        neighborPtr->state = GridNode::OPENSET;
-                        neighborPtr->cameFrom = current;
-                        neighborPtr->gScore = tentative_gScore;
-                        neighborPtr->fScore = tentative_gScore + getHeu(neighborPtr, endPtr);
-                        openSet_.push(neighborPtr); //put neighbor in open set and record it.
-                    }
-                    else if (tentative_gScore < neighborPtr->gScore)
-                    { //in open set and need update
-                        neighborPtr->cameFrom = current;
-                        neighborPtr->gScore = tentative_gScore;
-                        neighborPtr->fScore = tentative_gScore + getHeu(neighborPtr, endPtr);
+                        auto neighborNode = make_shared<Node>(neighbor, tentative_g, tentative_g + getHeuristic(neighbor, end_pt_shifted), current);
+                        visited[key] = neighborNode;
+                        openSet.push(neighborNode);
                     }
                 }
-        rclcpp::Time time_2 = rclcpp::Clock().now();
-        if ((time_2 - time_1).seconds() > 0.2)
+        // Safety timeout (e.g. 0.2s max)
+        if ((rclcpp::Clock().now() - time).seconds() > 0.2)
         {
-            RCLCPP_WARN(rclcpp::get_logger("AstarSearch"), "Failed in A star path searching !!! 0.2 seconds time limit exceeded.");
+            RCLCPP_WARN(rclcpp::get_logger("AstarSearchOctomap"),
+                        "A* search aborted (time limit exceeded). Iterations: %d", iter);
             return false;
         }
     }
-
-    rclcpp::Time time_2 = rclcpp::Clock().now();
-
-    if ((time_2 - time_1).seconds() > 0.1)
-        RCLCPP_WARN(rclcpp::get_logger("AstarSearch"), 
-                    "Time consume in A star path finding is %.3fs, iter=%d", (time_2 - time_1).seconds(), num_iter);
-
-    return false;
-}
-
-vector<Vector3d> AStar::getPath()
-{
-    vector<Vector3d> path;
-
-    for (auto ptr : gridPath_)
-        path.push_back(Index2Coord(ptr->index));
-
-    reverse(path.begin(), path.end());
-    return path;
-}
+    if (!success)
+    {
+        RCLCPP_WARN(rclcpp::get_logger("AstarSearchOctomap"), "A* failed to find a path after %d iterations.", iter);
+        return false;
+    }
+    retrievePath(end_pt_shifted);
+    return true;
+}        
