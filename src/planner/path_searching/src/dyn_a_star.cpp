@@ -5,14 +5,10 @@ using namespace Eigen;
 
 AStar::~AStar()
 {
-    for (int i = 0; i < POOL_SIZE_(0); i++)
-        for (int j = 0; j < POOL_SIZE_(1); j++)
-            for (int k = 0; k < POOL_SIZE_(2); k++)
-                delete GridNodeMap_[i][j][k];
 }
 
 
-double Astar::getDiagHeu(const octomap::point3d& node1, const octomap::point3d& node2)
+double AStar::getDiagHeu(const octomap::point3d& node1, const octomap::point3d& node2)
     {
         // Calculate the differences in each coordinate (x, y, z)
         double dx = std::abs(node1.x() - node2.x());
@@ -44,7 +40,7 @@ double Astar::getDiagHeu(const octomap::point3d& node1, const octomap::point3d& 
     }
 
 
-double Astar::getManhHeu(const octomap::point3d& node1, const octomap::point3d& node2)
+double AStar::getManhHeu(const octomap::point3d& node1, const octomap::point3d& node2)
     {
         // Calculate the differences in each coordinate (x, y, z)
         double dx = std::abs(node1.x() - node2.x());
@@ -59,25 +55,25 @@ double AStar::getEuclHeu(const octomap::point3d& node1, const octomap::point3d& 
     return (node2 - node1).norm();
 }
 
-void AStar::retrievePath(std::shared<Node> goal_node)
+void AStar::retrievePath(std::shared_ptr<Node> goal_node,rclcpp::Time t_start, int iter)
 {
     gridPath_.clear();
     for (auto node = goal_node; node != nullptr; node = node->parent)
     {
-        gridPath_.push_back(&(node->pos));
+        gridPath_.push_back(node->pos);
     }
     std::reverse(gridPath_.begin(), gridPath_.end());
 
-    double duration = (rclcpp::Clock().now() - time_1).seconds();
+    double duration = (rclcpp::Clock().now() - t_start).seconds();
     RCLCPP_INFO(rclcpp::get_logger("AstarSearchOctomap"),
                 "A* path found! %.3fs, %d iterations, %zu points.",
                 duration, iter, gridPath_.size());
     return;
 }
 
-bool Astar::isOccupied(const octomap::point3d& p) {
-    auto node = octree_.search(p);
-    return node && octree_.isNodeOccupied(node);
+bool AStar::isOccupied(const octomap::point3d& p) {
+    auto node = octree_->search(p);
+    return node && octree_->isNodeOccupied(node);
 }
 
 bool AStar::adjustStartEndPointsWithOctoMap(
@@ -98,8 +94,8 @@ bool AStar::adjustStartEndPointsWithOctoMap(
     auto inBounds = [&](const octomap::point3d& p) {
         double min_x, min_y, min_z;
         double max_x, max_y, max_z;
-        octree_.getMetricMin(min_x, min_y, min_z);
-        octree_.getMetricMax(max_x, max_y, max_z);
+        octree_->getMetricMin(min_x, min_y, min_z);
+        octree_->getMetricMax(max_x, max_y, max_z);
         return (p.x() >= min_x && p.x() <= max_x &&
                 p.y() >= min_y && p.y() <= max_y &&
                 p.z() >= min_z && p.z() <= max_z);
@@ -159,12 +155,10 @@ bool AStar::AstarSearch(const double step_size, Vector3d start_pt, Vector3d end_
         RCLCPP_ERROR(rclcpp::get_logger("AstarSearchOctomap"), "Octree is null!");
         return false;
     }
-    rclcpp::Time time = rclcpp::Clock().now();
+    rclcpp::Time t_start = rclcpp::Clock().now();
     ++rounds_; //TODO this seems not necessary
 
     step_size_ = step_size;
-    inv_step_size_ = 1 / step_size;
-    center_ = (start_pt + end_pt) / 2;
 
     octomap::point3d start_pt_shifted, end_pt_shifted;
     if (!adjustStartEndPointsWithOctoMap(start_pt, end_pt, start_pt_shifted, end_pt_shifted))
@@ -175,25 +169,25 @@ bool AStar::AstarSearch(const double step_size, Vector3d start_pt, Vector3d end_
 
     
 
-    std::priority_queue<std::shared_ptr<Node>, std::vector<shared_ptr<Node>>, NodeComparator> empty;
+    std::priority_queue<std::shared_ptr<Node>, std::vector<std::shared_ptr<Node>>, NodeComparator> empty;
     openSet_.swap(empty);
     unordered_map<octomap::OcTreeKey, shared_ptr<Node>, octomap::OcTreeKey::KeyHash> visited;
     // Init start node for search algo
 
 
-    auto startNode = make_shared<Node>(start_pt_shifted, 0.0, getHeuristic(start_pt_shifted, end_pt_shifted));
-    openSet.push(startNode);
+    auto startNode = make_shared<Node>(start_pt_shifted, 0.0, getHeu(start_pt_shifted, end_pt_shifted));
+    openSet_.push(startNode);
     double resolution = octree_->getResolution();
     bool success = false;
     shared_ptr<Node> goalNode = nullptr;
 
     int iter = 0;
 
-    while (!openSet.empty())
+    while (!openSet_.empty())
     {
         iter++;
-        auto current = openSet.top();
-        openSet.pop();
+        auto current = openSet_.top();
+        openSet_.pop();
 
         if ((current->pos - end_pt_shifted).norm() < resolution * 1.5)
         {
@@ -210,7 +204,7 @@ bool AStar::AstarSearch(const double step_size, Vector3d start_pt, Vector3d end_
                         continue; //dont add the current voxel to the queue
 
                     octomap::point3d neighbor = current->pos + octomap::point3d(dx * resolution, dy * resolution, dz * resolution);
-                    if (!isOccupied(neighbor))
+                    if (isOccupied(neighbor))
                         continue;
 
                     double cost = sqrt(dx * dx + dy * dy + dz * dz) * resolution;
@@ -224,13 +218,13 @@ bool AStar::AstarSearch(const double step_size, Vector3d start_pt, Vector3d end_
                     auto found = visited.find(key);
                     if (found == visited.end() || tentative_g < found->second->gScore) //if we not explored the node or if the gScore of an existing node is lower than the next computed cost we add the node to the list
                     {
-                        auto neighborNode = make_shared<Node>(neighbor, tentative_g, tentative_g + getHeuristic(neighbor, end_pt_shifted), current);
+                        auto neighborNode = make_shared<Node>(neighbor, tentative_g, tentative_g + getHeu(neighbor, end_pt_shifted), current);
                         visited[key] = neighborNode;
-                        openSet.push(neighborNode);
+                        openSet_.push(neighborNode);
                     }
                 }
         // Safety timeout (e.g. 0.2s max)
-        if ((rclcpp::Clock().now() - time).seconds() > 0.2)
+        if ((rclcpp::Clock().now() - t_start).seconds() > 0.2)
         {
             RCLCPP_WARN(rclcpp::get_logger("AstarSearchOctomap"),
                         "A* search aborted (time limit exceeded). Iterations: %d", iter);
@@ -242,6 +236,6 @@ bool AStar::AstarSearch(const double step_size, Vector3d start_pt, Vector3d end_
         RCLCPP_WARN(rclcpp::get_logger("AstarSearchOctomap"), "A* failed to find a path after %d iterations.", iter);
         return false;
     }
-    retrievePath(end_pt_shifted);
+    retrievePath(goalNode,t_start,iter);
     return true;
 }        

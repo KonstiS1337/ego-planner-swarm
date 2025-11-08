@@ -7,6 +7,10 @@
 #include <bspline_opt/uniform_bspline.h>
 #include <traj_utils/msg/data_disp.hpp>
 #include <plan_env/grid_map.h>
+#include <octomap/octomap.h>
+#include <octomap_msgs/conversions.h>
+#include <octomap_msgs/msg/octomap.hpp>
+#include <memory>
 #include <plan_env/obj_predictor.h>
 #include <traj_utils/plan_container.hpp>
 #include <rclcpp/rclcpp.hpp>
@@ -36,10 +40,10 @@ namespace ego_planner
     bool planGlobalTrajWaypoints(const Eigen::Vector3d &start_pos, const Eigen::Vector3d &start_vel, const Eigen::Vector3d &start_acc,
                                  const std::vector<Eigen::Vector3d> &waypoints, const Eigen::Vector3d &end_vel, const Eigen::Vector3d &end_acc);
 
-    void initPlanModules(rclcpp::Node::SharedPtr &node, PlanningVisualization::Ptr vis = NULL);
+    bool initPlanModules(rclcpp::Node::SharedPtr &node, PlanningVisualization::Ptr vis = NULL);
 
     void deliverTrajToOptimizer(void) { bspline_optimizer_->setSwarmTrajs(&swarm_trajs_buf_); };
-
+    bool checkTreeInit();
     void setDroneIdtoOpt(void) { bspline_optimizer_->setDroneId(pp_.drone_id); }
 
     double getSwarmClearance(void) { return bspline_optimizer_->getSwarmClearance(); }
@@ -53,15 +57,18 @@ namespace ego_planner
     GridMap::Ptr grid_map_;
     fast_planner::ObjPredictor::Ptr obj_predictor_;    
     SwarmTrajData swarm_trajs_buf_;
-
-  private:
+    private:
+    std::shared_ptr<octomap::OcTree> octree_;
+    rclcpp::Subscription<octomap_msgs::msg::Octomap>::SharedPtr octo_sub_;
     /* main planning algorithms & modules */
     PlanningVisualization::Ptr visualization_;
-
+    
     // ros::Publisher obj_pub_; //zx-todo 
-
+    
     BsplineOptimizer::Ptr bspline_optimizer_;
-
+    
+    void OctomapSub(octomap_msgs::msg::Octomap::ConstPtr const & msg);
+    
     int continous_failures_count_{0};
 
     void updateTrajInfo(const UniformBspline &position_traj, const rclcpp::Time time_now);

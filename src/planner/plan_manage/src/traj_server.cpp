@@ -1,14 +1,15 @@
 #include "bspline_opt/uniform_bspline.h"
 #include "nav_msgs/msg/odometry.hpp"
 #include "traj_utils/msg/bspline.hpp"
-#include "quadrotor_msgs/msg/position_command.hpp"
+#include <as2_msgs/msg/trajectory_point.hpp>
 #include "std_msgs/msg/empty.hpp"
 #include "visualization_msgs/msg/marker.hpp"
 #include <rclcpp/rclcpp.hpp>
 
-rclcpp::Publisher<quadrotor_msgs::msg::PositionCommand>::SharedPtr pos_cmd_pub;
 
-quadrotor_msgs::msg::PositionCommand cmd;
+rclcpp::Publisher<as2_msgs::msg::TrajectoryPoint>::SharedPtr pos_cmd_pub;
+
+as2_msgs::msg::TrajectoryPoint cmd;
 double pos_gain[3] = {0, 0, 0};
 double vel_gain[3] = {0, 0, 0};
 

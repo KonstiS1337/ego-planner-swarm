@@ -4,7 +4,7 @@
 namespace ego_planner
 {
 
-  void EGOReplanFSM::init(rclcpp::Node::SharedPtr &node)
+  bool EGOReplanFSM::init(rclcpp::Node::SharedPtr &node)
   {
     node_ = node;
     
@@ -52,9 +52,8 @@ namespace ego_planner
     visualization_.reset(new PlanningVisualization(node_));
 
     planner_manager_.reset(new EGOPlannerManager);
-
     planner_manager_->initPlanModules(node_, visualization_);
-
+    if(!planner_manager_->checkTreeInit()) return false;
     planner_manager_->deliverTrajToOptimizer(); // store trajectories
     planner_manager_->setDroneIdtoOpt();
 
@@ -152,6 +151,7 @@ namespace ego_planner
     }
     else
       cout << "Wrong target_type_ value! target_type_=" << target_type_ << endl;
+    return true;
   }
 
   void EGOReplanFSM::readGivenWps()

@@ -132,7 +132,7 @@ namespace ego_planner
     {
     }
 
-    void init(rclcpp::Node::SharedPtr &node);
+    bool init(rclcpp::Node::SharedPtr &node);
 
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW
   };

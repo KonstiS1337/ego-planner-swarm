@@ -33,14 +33,20 @@ namespace ego_planner
     node->get_parameter("optimization/order", order_);
   }
 
-  void BsplineOptimizer::setEnvironment(const GridMap::Ptr &map)
+  void BsplineOptimizer::setEnvironment(const std::shared_ptr<octomap::OcTree> map)
   {
-    this->grid_map_ = map;
+    this->octree_ = map;
   }
 
-  void BsplineOptimizer::setEnvironment(const GridMap::Ptr &map, const fast_planner::ObjPredictor::Ptr mov_obj)
+bool BsplineOptimizer::isOccupied(const Eigen::Vector3d& p) {
+    octomap::point3d temp(p.x(),p.y(),p.z());
+    auto node = octree_->search(temp);
+    return node && octree_->isNodeOccupied(node);
+}
+
+  void BsplineOptimizer::setEnvironment(const std::shared_ptr<octomap::OcTree> map, const fast_planner::ObjPredictor::Ptr mov_obj)
   {
-    this->grid_map_ = map;
+    this->octree_ = map;
     this->moving_objs_ = mov_obj;
   }
 
@@ -56,68 +62,50 @@ namespace ego_planner
   void BsplineOptimizer::setDroneId(const int drone_id) { drone_id_ = drone_id; }
 
   // 返回多个安全的控制点集
-  std::vector<ControlPoints> BsplineOptimizer::distinctiveTrajs(vector<std::pair<int, int>> segments)
+  std::vector<ControlPoints> BsplineOptimizer::distinctiveTrajs(std::vector<std::pair<int, int>> segments)
   {
-    if (segments.size() == 0) // will be invoked again later.
+    if (segments.empty())
     {
-      std::vector<ControlPoints> oneSeg;
-      oneSeg.push_back(cps_);
-      return oneSeg;
+      return { cps_ };
     }
 
-    constexpr int MAX_TRAJS = 8;                                                                            // 最多的轨迹数量
-    constexpr int VARIS = 2;                                                                                // 允许的变化种类数
-    int seg_upbound = std::min((int)segments.size(), static_cast<int>(floor(log(MAX_TRAJS) / log(VARIS)))); // 允许变换的片段数量上限
+    constexpr int MAX_TRAJS = 8;
+    constexpr int VARIS = 2;
+    int seg_upbound = std::min((int)segments.size(), static_cast<int>(floor(log(MAX_TRAJS) / log(VARIS))));
+
     std::vector<ControlPoints> control_pts_buf;
     control_pts_buf.reserve(MAX_TRAJS);
-    const double RESOLUTION = grid_map_->getResolution();
-    const double CTRL_PT_DIST = (cps_.points.col(0) - cps_.points.col(cps_.size - 1)).norm() / (cps_.size - 1); // 计算控制点间的平均距离
 
-    // Step 1. Find the opposite vectors and base points for every segment.
+    const double RESOLUTION = octree_->getResolution();
+    const double CTRL_PT_DIST = (cps_.points.col(0) - cps_.points.col(cps_.size - 1)).norm() / (cps_.size - 1);
+
+    // Step 1. Initialize segment info
     std::vector<std::pair<ControlPoints, ControlPoints>> RichInfoSegs;
-    // 初始化两套控制点信息
     for (int i = 0; i < seg_upbound; i++)
     {
       std::pair<ControlPoints, ControlPoints> RichInfoOneSeg;
       ControlPoints RichInfoOneSeg_temp;
-      // 获取指定片段的控制点信息
       cps_.segment(RichInfoOneSeg_temp, segments[i].first, segments[i].second);
       RichInfoOneSeg.first = RichInfoOneSeg_temp;
       RichInfoOneSeg.second = RichInfoOneSeg_temp;
       RichInfoSegs.push_back(RichInfoOneSeg);
-
-      // cout << "RichInfoOneSeg_temp, out" << endl;
-      // cout << "RichInfoSegs[" << i << "].first" << endl;
-      // for ( int k=0; k<RichInfoOneSeg_temp.size; k++ )
-      //   if ( RichInfoOneSeg_temp.base_point[k].size() > 0 )
-      //   {
-      //     cout << "###" << RichInfoOneSeg_temp.points.col(k).transpose() << endl;
-      //     for (int k2 = 0; k2 < RichInfoOneSeg_temp.base_point[k].size(); k2++)
-      //     {
-      //       cout << "      " << RichInfoOneSeg_temp.base_point[k][k2].transpose() << " @ " << RichInfoOneSeg_temp.direction[k][k2].transpose() << endl;
-      //     }
-      //   }
     }
 
     for (int i = 0; i < seg_upbound; i++)
     {
-
-      // 1.1 Find the start occupied point id and the last occupied point id
       if (RichInfoSegs[i].first.size > 1)
       {
         int occ_start_id = -1, occ_end_id = -1;
         Eigen::Vector3d occ_start_pt, occ_end_pt;
+
+        // Find where segment enters obstacle
         for (int j = 0; j < RichInfoSegs[i].first.size - 1; j++)
         {
-          // cout << "A *" << j << "*" << endl;
-          //  遍历每个控制点及其后一个点，在两点间通过线性插值生成采样点
           double step_size = RESOLUTION / (RichInfoSegs[i].first.points.col(j) - RichInfoSegs[i].first.points.col(j + 1)).norm() / 2;
           for (double a = 1; a > 0; a -= step_size)
           {
-            Eigen::Vector3d pt(a * RichInfoSegs[i].first.points.col(j) + (1 - a) * RichInfoSegs[i].first.points.col(j + 1));
-            // cout << " " << grid_map_->getInflateOccupancy(pt) << " pt=" << pt.transpose() << endl;
-            //  如果检测到在障碍物内，则存储对应数据
-            if (grid_map_->getInflateOccupancy(pt))
+            Eigen::Vector3d pt = a * RichInfoSegs[i].first.points.col(j) + (1 - a) * RichInfoSegs[i].first.points.col(j + 1);
+            if (isOccupied(pt))
             {
               occ_start_id = j;
               occ_start_pt = pt;
@@ -126,20 +114,15 @@ namespace ego_planner
           }
         }
       exit_multi_loop1:;
-        // 查找片段与最后一个障碍物的交点
+
+        // Find where segment leaves obstacle
         for (int j = RichInfoSegs[i].first.size - 1; j >= 1; j--)
         {
-          // cout << "j=" << j << endl;
-          // cout << "B *" << j << "*" << endl;
-          ;
-          // 和上面同样的采样，然后检测是否在障碍物中
           double step_size = RESOLUTION / (RichInfoSegs[i].first.points.col(j) - RichInfoSegs[i].first.points.col(j - 1)).norm();
           for (double a = 1; a > 0; a -= step_size)
           {
-            Eigen::Vector3d pt(a * RichInfoSegs[i].first.points.col(j) + (1 - a) * RichInfoSegs[i].first.points.col(j - 1));
-            // cout << " " << grid_map_->getInflateOccupancy(pt) << " pt=" << pt.transpose() << endl;
-            ;
-            if (grid_map_->getInflateOccupancy(pt))
+            Eigen::Vector3d pt = a * RichInfoSegs[i].first.points.col(j) + (1 - a) * RichInfoSegs[i].first.points.col(j - 1);
+            if (isOccupied(pt))
             {
               occ_end_id = j;
               occ_end_pt = pt;
@@ -149,139 +132,72 @@ namespace ego_planner
         }
       exit_multi_loop2:;
 
-        // double check
-        // 如果片段的起点或者终点在障碍物中，将会被移除
+        // Sanity check
         if (occ_start_id == -1 || occ_end_id == -1)
         {
-          // It means that the first or the last control points of one segment are in obstacles, which is not allowed.
-          // ROS_WARN("What? occ_start_id=%d, occ_end_id=%d", occ_start_id, occ_end_id);
-
           segments.erase(segments.begin() + i);
           RichInfoSegs.erase(RichInfoSegs.begin() + i);
           seg_upbound--;
           i--;
-
           continue;
-
-          // cout << "RichInfoSegs[" << i << "].first" << endl;
-          // for (int k = 0; k < RichInfoSegs[i].first.size; k++)
-          // {
-          //   if (RichInfoSegs[i].first.base_point.size() > 0)
-          //   {
-          //     cout << "###" << RichInfoSegs[i].first.points.col(k).transpose() << endl;
-          //     for (int k2 = 0; k2 < RichInfoSegs[i].first.base_point[k].size(); k2++)
-          //     {
-          //       cout << "      " << RichInfoSegs[i].first.base_point[k][k2].transpose() << " @ " << RichInfoSegs[i].first.direction[k][k2].transpose() << endl;
-          //     }
-          //   }
-          // }
         }
 
-        // 1.2 Reverse the vector and find new base points from occ_start_id to occ_end_id.
+        // Reverse base points inside obstacle region
         for (int j = occ_start_id; j <= occ_end_id; j++)
         {
-          Eigen::Vector3d base_pt_reverse, base_vec_reverse;
-          // 检查控制点的base point是否为1
-          if (RichInfoSegs[i].first.base_point[j].size() != 1)
-          {
-            cout << "RichInfoSegs[" << i << "].first.base_point[" << j << "].size()=" << RichInfoSegs[i].first.base_point[j].size() << endl;
-            RCLCPP_ERROR(rclcpp::get_logger("distinctiveTrajs"), "Wrong number of base_points!!! Should not be happen!.");
+          Eigen::Vector3d base_vec_reverse = -RichInfoSegs[i].first.direction[j][0];
+          Eigen::Vector3d base_pt_reverse;
 
-            cout << setprecision(5);
-            cout << "cps_" << endl;
-            cout << " clearance=" << cps_.clearance << " cps.size=" << cps_.size << endl;
-            // 输出错误信息
-            for (int temp_i = 0; temp_i < cps_.size; temp_i++)
-            {
-              if (cps_.base_point[temp_i].size() > 1 && cps_.base_point[temp_i].size() < 1000)
-              {
-                RCLCPP_ERROR(rclcpp::get_logger("distinctiveTrajs"), "Should not happen!!!");
-                cout << "######" << cps_.points.col(temp_i).transpose() << endl;
-                for (size_t temp_j = 0; temp_j < cps_.base_point[temp_i].size(); temp_j++)
-                  cout << "      " << cps_.base_point[temp_i][temp_j].transpose() << " @ " << cps_.direction[temp_i][temp_j].transpose() << endl;
-              }
-            }
-
-            std::vector<ControlPoints> blank;
-            return blank;
-          }
-
-          // 通过取反获得相反方向的向量
-          base_vec_reverse = -RichInfoSegs[i].first.direction[j][0];
-
-          // The start and the end case must get taken special care of.
-          // 若当前控制点为片段的起始点 occ_start_id，则将障碍物交点 occ_start_pt 直接设为 base_pt_reverse
           if (j == occ_start_id)
-          {
             base_pt_reverse = occ_start_pt;
-          }
-          // 若当前控制点为片段的终止点 occ_end_id，则将终点交点 occ_end_pt 设为 base_pt_reverse
           else if (j == occ_end_id)
-          {
             base_pt_reverse = occ_end_pt;
-          }
-          // 对于片段中的中间控制点，将基准点 base_pt_reverse 设置为当前控制点 points.col(j) 沿反向向量 base_vec_reverse 方向延伸的某一距离位置
           else
-          {
-            base_pt_reverse = RichInfoSegs[i].first.points.col(j) + base_vec_reverse * (RichInfoSegs[i].first.base_point[j][0] - RichInfoSegs[i].first.points.col(j)).norm();
-          }
+            base_pt_reverse = RichInfoSegs[i].first.points.col(j) +
+                              base_vec_reverse *
+                                  (RichInfoSegs[i].first.base_point[j][0] - RichInfoSegs[i].first.points.col(j)).norm();
 
-          // 检查base_pt_reverse是否在障碍物中
-          if (grid_map_->getInflateOccupancy(base_pt_reverse)) // Search outward.
+          if (isOccupied(base_pt_reverse))
           {
-            // 最大搜索范围
-            double l_upbound = 5 * CTRL_PT_DIST; // "5" is the threshold.
+            double l_upbound = 5 * CTRL_PT_DIST;
             double l = RESOLUTION;
             for (; l <= l_upbound; l += RESOLUTION)
             {
-              // 不断将控制点向外移动，寻找不在障碍物中的控制点
               Eigen::Vector3d base_pt_temp = base_pt_reverse + l * base_vec_reverse;
-              // cout << base_pt_temp.transpose() << endl;
-              if (!grid_map_->getInflateOccupancy(base_pt_temp))
+              if (!isOccupied(base_pt_temp))
               {
                 RichInfoSegs[i].second.base_point[j][0] = base_pt_temp;
                 RichInfoSegs[i].second.direction[j][0] = base_vec_reverse;
                 break;
               }
             }
-            // 如果找不到则删除这一段
             if (l > l_upbound)
             {
-              RCLCPP_WARN(rclcpp::get_logger("distinctiveTrajs"), "Can't find the new base points at the opposite within the threshold. i=%d, j=%d", i, j);
-
               segments.erase(segments.begin() + i);
               RichInfoSegs.erase(RichInfoSegs.begin() + i);
               seg_upbound--;
               i--;
-
-              goto exit_multi_loop3; // break "for (int j = 0; j < RichInfoSegs[i].first.size; j++)"
+              goto exit_multi_loop3;
             }
           }
-          // 如果距离控制点足够远且不再障碍物中则无需继续搜索
-          else if ((base_pt_reverse - RichInfoSegs[i].first.points.col(j)).norm() >= RESOLUTION) // Unnecessary to search.
+          else if ((base_pt_reverse - RichInfoSegs[i].first.points.col(j)).norm() >= RESOLUTION)
           {
             RichInfoSegs[i].second.base_point[j][0] = base_pt_reverse;
             RichInfoSegs[i].second.direction[j][0] = base_vec_reverse;
           }
-          // 基点和控制点太近则删除这一段
           else
           {
-            RCLCPP_WARN(rclcpp::get_logger("distinctiveTrajs"), "base_point and control point are too close!");
-            cout << "base_point=" << RichInfoSegs[i].first.base_point[j][0].transpose() << " control point=" << RichInfoSegs[i].first.points.col(j).transpose() << endl;
-
             segments.erase(segments.begin() + i);
             RichInfoSegs.erase(RichInfoSegs.begin() + i);
             seg_upbound--;
             i--;
-
-            goto exit_multi_loop3; // break "for (int j = 0; j < RichInfoSegs[i].first.size; j++)"
+            goto exit_multi_loop3;
           }
         }
 
-        // 1.3 Assign the base points to control points within [0, occ_start_id) and (occ_end_id, RichInfoSegs[i].first.size()-1].
+        // Extend mirrored base points outside obstacle range
         if (RichInfoSegs[i].second.size)
         {
-          // 为片段起点之前和终点之后的控制点设置统一的基准点和方向，使得这些控制点在障碍物影响范围外时能够保持一致的路径属性
           for (int j = occ_start_id - 1; j >= 0; j--)
           {
             RichInfoSegs[i].second.base_point[j][0] = RichInfoSegs[i].second.base_point[occ_start_id][0];
@@ -296,139 +212,48 @@ namespace ego_planner
 
       exit_multi_loop3:;
       }
-      // 片段只有一个控制点的情况
-      else if (RichInfoSegs[i].first.size == 1)
-      {
-        cout << "i=" << i << " RichInfoSegs.size()=" << RichInfoSegs.size() << endl;
-        cout << "RichInfoSegs[i].first.size=" << RichInfoSegs[i].first.size << endl;
-        cout << "RichInfoSegs[i].first.direction.size()=" << RichInfoSegs[i].first.direction.size() << endl;
-        cout << "RichInfoSegs[i].first.direction[0].size()=" << RichInfoSegs[i].first.direction[0].size() << endl;
-        cout << "RichInfoSegs[i].first.points.cols()=" << RichInfoSegs[i].first.points.cols() << endl;
-        cout << "RichInfoSegs[i].first.base_point.size()=" << RichInfoSegs[i].first.base_point.size() << endl;
-        cout << "RichInfoSegs[i].first.base_point[0].size()=" << RichInfoSegs[i].first.base_point[0].size() << endl;
-        Eigen::Vector3d base_vec_reverse = -RichInfoSegs[i].first.direction[0][0];
-        Eigen::Vector3d base_pt_reverse = RichInfoSegs[i].first.points.col(0) + base_vec_reverse * (RichInfoSegs[i].first.base_point[0][0] - RichInfoSegs[i].first.points.col(0)).norm();
-
-        if (grid_map_->getInflateOccupancy(base_pt_reverse)) // Search outward.
-        {
-          double l_upbound = 5 * CTRL_PT_DIST; // "5" is the threshold.
-          double l = RESOLUTION;
-          for (; l <= l_upbound; l += RESOLUTION)
-          {
-            Eigen::Vector3d base_pt_temp = base_pt_reverse + l * base_vec_reverse;
-            // cout << base_pt_temp.transpose() << endl;
-            if (!grid_map_->getInflateOccupancy(base_pt_temp))
-            {
-              RichInfoSegs[i].second.base_point[0][0] = base_pt_temp;
-              RichInfoSegs[i].second.direction[0][0] = base_vec_reverse;
-              break;
-            }
-          }
-          if (l > l_upbound)
-          {
-            RCLCPP_WARN(rclcpp::get_logger("distinctiveTrajs"), 
-                        "Can't find the new base points at the opposite within the threshold, 2. i=%d", i);
-
-            segments.erase(segments.begin() + i);
-            RichInfoSegs.erase(RichInfoSegs.begin() + i);
-            seg_upbound--;
-            i--;
-          }
-        }
-        else if ((base_pt_reverse - RichInfoSegs[i].first.points.col(0)).norm() >= RESOLUTION) // Unnecessary to search.
-        {
-          RichInfoSegs[i].second.base_point[0][0] = base_pt_reverse;
-          RichInfoSegs[i].second.direction[0][0] = base_vec_reverse;
-        }
-        else
-        {
-          RCLCPP_WARN(rclcpp::get_logger("distinctiveTrajs"), 
-                        "base_point and control point are too close!, 2");
-          cout << "base_point=" << RichInfoSegs[i].first.base_point[0][0].transpose() << " control point=" << RichInfoSegs[i].first.points.col(0).transpose() << endl;
-
-          segments.erase(segments.begin() + i);
-          RichInfoSegs.erase(RichInfoSegs.begin() + i);
-          seg_upbound--;
-          i--;
-        }
-      }
-      else
-      {
-        segments.erase(segments.begin() + i);
-        RichInfoSegs.erase(RichInfoSegs.begin() + i);
-        seg_upbound--;
-        i--;
-      }
     }
-    // cout << "A3" << endl;
 
-    // Step 2. Assemble each segment to make up the new control point sequence.
-    // 将每个分段组合起来，组成新的控制点序列
-    if (seg_upbound == 0) // After the erase operation above, segment legth will decrease to 0 again.
+    // Step 2. Assemble new control point sequences
+    if (seg_upbound == 0)
     {
-      std::vector<ControlPoints> oneSeg;
-      oneSeg.push_back(cps_);
-      return oneSeg;
+      return { cps_ };
     }
 
-    // 初始化选择向量
     std::vector<int> selection(seg_upbound);
     std::fill(selection.begin(), selection.end(), 0);
-    selection[0] = -1; // init
-    // 计算最大组合数
+    selection[0] = -1;
     int max_traj_nums = static_cast<int>(pow(VARIS, seg_upbound));
+
     for (int i = 0; i < max_traj_nums; i++)
     {
-      // 2.1 Calculate the selection table.
       int digit_id = 0;
       selection[digit_id]++;
-      // 生成一个选择表
       while (digit_id < seg_upbound && selection[digit_id] >= VARIS)
       {
         selection[digit_id] = 0;
         digit_id++;
         if (digit_id >= seg_upbound)
-        {
-          RCLCPP_ERROR(rclcpp::get_logger("distinctiveTrajs"), 
-                        "Should not happen!!! digit_id=%d, seg_upbound=%d", digit_id, seg_upbound);
-          
-        }
+          break;
         selection[digit_id]++;
       }
 
-      // 2.2 Assign params according to the selection table.
       ControlPoints cpsOneSample;
       cpsOneSample.resize(cps_.size);
       cpsOneSample.clearance = cps_.clearance;
+
       int cp_id = 0, seg_id = 0, cp_of_seg_id = 0;
-      // 遍历所有控制点
-      while (/*seg_id < RichInfoSegs.size() ||*/ cp_id < cps_.size)
+      while (cp_id < cps_.size)
       {
-        // cout << "A ";
-        //  if ( seg_id >= RichInfoSegs.size() )
-        //  {
-        //    cout << "seg_id=" << seg_id << " RichInfoSegs.size()=" << RichInfoSegs.size() << endl;
-        //  }
-        //  if ( cp_id >= cps_.base_point.size() )
-        //  {
-        //    cout << "cp_id=" << cp_id << " cps_.base_point.size()=" << cps_.base_point.size() << endl;
-        //  }
-        //  if ( cp_of_seg_id >= RichInfoSegs[seg_id].first.base_point.size() )
-        //  {
-        //    cout << "cp_of_seg_id=" << cp_of_seg_id << " RichInfoSegs[seg_id].first.base_point.size()=" << RichInfoSegs[seg_id].first.base_point.size() << endl;
-        //  }
-        //  判断控制点是否在当前控制范围内
-        //  如果不在则直接从原始控制点集中复制数据
         if (seg_id >= seg_upbound || cp_id < segments[seg_id].first || cp_id > segments[seg_id].second)
         {
           cpsOneSample.points.col(cp_id) = cps_.points.col(cp_id);
           cpsOneSample.base_point[cp_id] = cps_.base_point[cp_id];
           cpsOneSample.direction[cp_id] = cps_.direction[cp_id];
         }
-        // 如果 cp_id 位于当前片段范围内，根据 selection[seg_id] 的值选择片段的第一套或第二套基准点和方向
         else if (cp_id >= segments[seg_id].first && cp_id <= segments[seg_id].second)
         {
-          if (!selection[seg_id]) // zx-todo
+          if (!selection[seg_id])
           {
             cpsOneSample.points.col(cp_id) = RichInfoSegs[seg_id].first.points.col(cp_of_seg_id);
             cpsOneSample.base_point[cp_id] = RichInfoSegs[seg_id].first.base_point[cp_of_seg_id];
@@ -446,25 +271,16 @@ namespace ego_planner
             }
             else
             {
-              // Abandon this trajectory.
               goto abandon_this_trajectory;
             }
           }
 
-          // 当遍历到片段的最后一个控制点时，将 cp_of_seg_id 重置为 0，并将 seg_id 指向下一个片段
           if (cp_id == segments[seg_id].second)
           {
             cp_of_seg_id = 0;
             seg_id++;
           }
         }
-        else
-        {
-          RCLCPP_ERROR(rclcpp::get_logger("distinctiveTrajs"), 
-                    "Shold not happen!!!!, cp_id=%d, seg_id=%d, segments.front().first=%d, segments.back().second=%d, segments[seg_id].first=%d, segments[seg_id].second=%d",
-                    cp_id, seg_id, segments.front().first, segments.back().second, segments[seg_id].first, segments[seg_id].second);
-        }
-
         cp_id++;
       }
 
@@ -474,7 +290,8 @@ namespace ego_planner
     }
 
     return control_pts_buf;
-  } // namespace ego_planner
+  }
+
 
   /* This function is very similar to check_collision_and_rebound().
    * It was written separately, just because I did it once and it has been running stably since March 2020.
@@ -494,7 +311,7 @@ namespace ego_planner
     // 进入或离开障碍物稳定的时间间隔
     constexpr int ENOUGH_INTERVAL = 2;
     // 障碍物检测的步长
-    double step_size = grid_map_->getResolution() / ((init_points.col(0) - init_points.rightCols(1)).norm() / (init_points.cols() - 1)) / 1.5;
+    double step_size = octree_->getResolution() / ((init_points.col(0) - init_points.rightCols(1)).norm() / (init_points.cols() - 1)) / 1.5;
     int in_id = -1, out_id = -1;
     vector<std::pair<int, int>> segment_ids;
     int same_occ_state_times = ENOUGH_INTERVAL + 1;
@@ -510,7 +327,7 @@ namespace ego_planner
       for (double a = 1.0; a > 0.0; a -= step_size)
       {
         // TODO:没搞懂这是干嘛的
-        occ = grid_map_->getInflateOccupancy(a * init_points.col(i - 1) + (1 - a) * init_points.col(i));
+        occ = isOccupied(a * init_points.col(i - 1) + (1 - a) * init_points.col(i));
         // cout << " " << occ;
         //  cout << setprecision(5);
         //  cout << (a * init_points.col(i-1) + (1-a) * init_points.col(i)).transpose() << " occ1=" << occ << endl;
@@ -734,15 +551,15 @@ namespace ego_planner
           {
             cps_.flag_temp[j] = true;
             // 逐步进行采样
-            for (double a = length; a >= 0.0; a -= grid_map_->getResolution())
+            for (double a = length; a >= 0.0; a -= octree_->getResolution())
             {
               // 通过线性插值计算采样点位置
-              occ = grid_map_->getInflateOccupancy((a / length) * intersection_point + (1 - a / length) * init_points.col(j));
+              occ = isOccupied((a / length) * intersection_point + (1 - a / length) * init_points.col(j));
 
-              if (occ || a < grid_map_->getResolution())
+              if (occ || a < octree_->getResolution())
               {
                 if (occ)
-                  a += grid_map_->getResolution();
+                  a += octree_->getResolution();
                 // 记录基点并计算到控制点的方向
                 cps_.base_point[j].push_back((a / length) * intersection_point + (1 - a / length) * init_points.col(j));
                 cps_.direction[j].push_back((intersection_point - init_points.col(j)).normalized());
@@ -1308,7 +1125,7 @@ namespace ego_planner
     for (int i = order_ - 1; i <= i_end; ++i)
     {
 
-      bool occ = grid_map_->getInflateOccupancy(cps_.points.col(i));
+      bool occ = isOccupied(cps_.points.col(i));
 
       /*** check if the new collision will be valid ***/
       if (occ)
@@ -1316,7 +1133,7 @@ namespace ego_planner
         for (size_t k = 0; k < cps_.direction[i].size(); ++k)
         {
           cout.precision(2);
-          if ((cps_.points.col(i) - cps_.base_point[i][k]).dot(cps_.direction[i][k]) < 1 * grid_map_->getResolution()) // current point is outside all the collision_points.
+          if ((cps_.points.col(i) - cps_.base_point[i][k]).dot(cps_.direction[i][k]) < 1 * octree_->getResolution()) // current point is outside all the collision_points.
           {
             occ = false; // Not really takes effect, just for better hunman understanding.
             break;
@@ -1331,7 +1148,7 @@ namespace ego_planner
         int j;
         for (j = i - 1; j >= 0; --j)
         {
-          occ = grid_map_->getInflateOccupancy(cps_.points.col(j));
+          occ = isOccupied(cps_.points.col(j));
           if (!occ)
           {
             in_id = j;
@@ -1346,7 +1163,7 @@ namespace ego_planner
 
         for (j = i + 1; j < cps_.size; ++j)
         {
-          occ = grid_map_->getInflateOccupancy(cps_.points.col(j));
+          occ = isOccupied(cps_.points.col(j));
 
           if (!occ)
           {
@@ -1444,14 +1261,14 @@ namespace ego_planner
             if (length > 1e-5)
             {
               cps_.flag_temp[j] = true;
-              for (double a = length; a >= 0.0; a -= grid_map_->getResolution())
+              for (double a = length; a >= 0.0; a -= octree_->getResolution())
               {
-                bool occ = grid_map_->getInflateOccupancy((a / length) * intersection_point + (1 - a / length) * cps_.points.col(j));
+                bool occ = isOccupied((a / length) * intersection_point + (1 - a / length) * cps_.points.col(j));
 
-                if (occ || a < grid_map_->getResolution())
+                if (occ || a < octree_->getResolution())
                 {
                   if (occ)
-                    a += grid_map_->getResolution();
+                    a += octree_->getResolution();
                   cps_.base_point[j].push_back((a / length) * intersection_point + (1 - a / length) * cps_.points.col(j));
                   cps_.direction[j].push_back((intersection_point - cps_.points.col(j)).normalized());
                   break;
@@ -1612,11 +1429,11 @@ namespace ego_planner
         double tm, tmp;
         traj.getTimeSpan(tm, tmp);
         // 计算时间步长
-        double t_step = (tmp - tm) / ((traj.evaluateDeBoorT(tmp) - traj.evaluateDeBoorT(tm)).norm() / grid_map_->getResolution());
+        double t_step = (tmp - tm) / ((traj.evaluateDeBoorT(tmp) - traj.evaluateDeBoorT(tm)).norm() / octree_->getResolution());
         // 遍历轨迹的前2/3部分进行障碍物检测
         for (double t = tm; t < tmp * 2 / 3; t += t_step) // Only check the closest 2/3 partition of the whole trajectory.
         {
-          flag_occ = grid_map_->getInflateOccupancy(traj.evaluateDeBoorT(t));
+          flag_occ = isOccupied(traj.evaluateDeBoorT(t));
           if (flag_occ)
           {
             // cout << "hit_obs, t=" << t << " P=" << traj.evaluateDeBoorT(t).transpose() << endl;
@@ -1763,10 +1580,10 @@ namespace ego_planner
       UniformBspline traj = UniformBspline(cps_.points, 3, bspline_interval_);
       double tm, tmp;
       traj.getTimeSpan(tm, tmp);
-      double t_step = (tmp - tm) / ((traj.evaluateDeBoorT(tmp) - traj.evaluateDeBoorT(tm)).norm() / grid_map_->getResolution()); // Step size is defined as the maximum size that can passes throgth every gird.
+      double t_step = (tmp - tm) / ((traj.evaluateDeBoorT(tmp) - traj.evaluateDeBoorT(tm)).norm() / octree_->getResolution()); // Step size is defined as the maximum size that can passes throgth every gird.
       for (double t = tm; t < tmp * 2 / 3; t += t_step)
       {
-        if (grid_map_->getInflateOccupancy(traj.evaluateDeBoorT(t)))
+        if (isOccupied(traj.evaluateDeBoorT(t)))
         {
           // cout << "Refined traj hit_obs, t=" << t << " P=" << traj.evaluateDeBoorT(t).transpose() << endl;
 

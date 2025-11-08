@@ -13,9 +13,9 @@ int main(int argc, char **argv)
 
   EGOReplanFSM rebo_replan;
 
-  rebo_replan.init(node);
+  if(rebo_replan.init(node)) rclcpp::spin(node);
+  else RCLCPP_ERROR(node->get_logger(),"Failed to init planner successfully -> shutingdown");
 
-  rclcpp::spin(node);
   rclcpp::shutdown();
 
   return 0;

@@ -4,10 +4,10 @@
 #include <Eigen/Eigen>
 #include <path_searching/dyn_a_star.h>
 #include <bspline_opt/uniform_bspline.h>
-#include <plan_env/grid_map.h>
 #include <plan_env/obj_predictor.h>
 #include <rclcpp/rclcpp.hpp>
 #include "bspline_opt/lbfgs.hpp"
+#include <octomap/octomap.h>
 #include <traj_utils/plan_container.hpp>
 
 // Gradient and elasitc band optimization
@@ -90,8 +90,8 @@ namespace ego_planner
     ~BsplineOptimizer() {}
 
     /* main API */
-    void setEnvironment(const GridMap::Ptr &map);
-    void setEnvironment(const GridMap::Ptr &map, const fast_planner::ObjPredictor::Ptr mov_obj);
+    void setEnvironment(const std::shared_ptr<octomap::OcTree> octree_);
+    void setEnvironment(const std::shared_ptr<octomap::OcTree> octree_, const fast_planner::ObjPredictor::Ptr mov_obj);
     void setParam(rclcpp::Node::SharedPtr node);
     Eigen::MatrixXd BsplineOptimizeTraj(const Eigen::MatrixXd &points, const double &ts,
                                         const int &cost_function, int max_num_id, int max_time_id);
@@ -127,7 +127,9 @@ namespace ego_planner
     inline double getSwarmClearance(void) { return swarm_clearance_; }
 
   private:
-    GridMap::Ptr grid_map_;
+    bool isOccupied(const Eigen::Vector3d& p);
+
+    std::shared_ptr<octomap::OcTree> octree_;
     fast_planner::ObjPredictor::Ptr moving_objs_;
     SwarmTrajData *swarm_trajs_{NULL}; // Can not use shared_ptr and no need to free
     int drone_id_;

@@ -6,11 +6,35 @@
 namespace ego_planner
 {
 
-  EGOPlannerManager::EGOPlannerManager() {}
-
+  EGOPlannerManager::EGOPlannerManager() {
+    
+  }
+  
   EGOPlannerManager::~EGOPlannerManager() {}
+  
+  void EGOPlannerManager::OctomapSub(octomap_msgs::msg::Octomap::ConstPtr const & msg) {
+      octomap::AbstractOcTree* tree = octomap_msgs::msgToMap(*msg);
+      if (tree)
+      octree_.reset(dynamic_cast<octomap::OcTree*>(tree));
+      //TODO reset bsplineoptimizer once new ocTree has been received 
+    }
+    
+  bool EGOPlannerManager::checkTreeInit() {
+    rclcpp::Clock steady_clock(RCL_STEADY_TIME);  // use steady clock (monotonic)
+    rclcpp::Time t_start = steady_clock.now();
+    
+    while (!octree_ && (steady_clock.now() - t_start) < rclcpp::Duration::from_seconds(5.0)) {
+        RCLCPP_WARN(rclcpp::get_logger("planner"), "Waiting for octree_ to be set...");
+        rclcpp::sleep_for(std::chrono::seconds(1));
+    }
 
-  void EGOPlannerManager::initPlanModules(rclcpp::Node::SharedPtr &node, PlanningVisualization::Ptr vis)
+    if (!octree_) {
+        RCLCPP_ERROR(rclcpp::get_logger("planner"), "Octree was not set within 5 seconds!");
+        return false;
+    }
+  }
+
+    bool EGOPlannerManager::initPlanModules(rclcpp::Node::SharedPtr &node, PlanningVisualization::Ptr vis)
   {
     node->declare_parameter("manager/max_vel", -1.0);
     node->declare_parameter("manager/max_acc", -1.0);
@@ -20,7 +44,7 @@ namespace ego_planner
     node->declare_parameter("manager/planning_horizon", 5.0);
     node->declare_parameter("manager/use_distinctive_trajs", false);
     node->declare_parameter("manager/drone_id", -1);
-
+    
     node->get_parameter("manager/max_vel", pp_.max_vel_);
     node->get_parameter("manager/max_acc", pp_.max_acc_);
     node->get_parameter("manager/max_jerk", pp_.max_jerk_);
@@ -29,20 +53,21 @@ namespace ego_planner
     node->get_parameter("manager/planning_horizon", pp_.planning_horizen_);
     node->get_parameter("manager/use_distinctive_trajs", pp_.use_distinctive_trajs);
     node->get_parameter("manager/drone_id", pp_.drone_id);
-
+    
     local_data_.traj_id_ = 0;
-    grid_map_.reset(new GridMap);
-    // grid_map_->initMap(nh);
-    grid_map_->initMap(node);
-
+    grid_map_.reset(new GridMap); //TODO change this to reset call of occupancy map module and init
+    
+    
     bspline_optimizer_.reset(new BsplineOptimizer);
-    // bspline_optimizer_->setParam(nh);
     bspline_optimizer_->setParam(node);
-    bspline_optimizer_->setEnvironment(grid_map_, obj_predictor_);
+    octo_sub_ = node->create_subscription<octomap_msgs::msg::Octomap>("/octomap_inflated",1,std::bind(&EGOPlannerManager::OctomapSub,this,std::placeholders::_1));
+    
+    bspline_optimizer_->setEnvironment(octree_, obj_predictor_);
     bspline_optimizer_->a_star_.reset(new AStar);
-    bspline_optimizer_->a_star_->initGridMap(grid_map_, Eigen::Vector3i(100, 100, 100));
+    bspline_optimizer_->a_star_->initOctree(octree_);
 
     visualization_ = vis;
+    return true;
   }
 
   bool EGOPlannerManager::reboundReplan(Eigen::Vector3d start_pt, Eigen::Vector3d start_vel,
@@ -577,5 +602,5 @@ namespace ego_planner
     }
     UniformBspline::parameterizeToBspline(dt, point_set, start_end_derivative, ctrl_pts);
   }
-
+  
 } // namespace ego_planner

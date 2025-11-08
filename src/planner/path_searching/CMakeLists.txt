@@ -21,6 +21,8 @@ find_package(visualization_msgs REQUIRED)
 find_package(nav_msgs REQUIRED)
 find_package(plan_env REQUIRED)
 find_package(cv_bridge REQUIRED)
+find_package(octomap REQUIRED)
+
 
 find_package(Eigen3 REQUIRED)
 find_package(PCL REQUIRED)
@@ -51,7 +53,7 @@ add_library( path_searching SHARED
     src/dyn_a_star.cpp
 )
 
-ament_target_dependencies(path_searching plan_env std_msgs visualization_msgs nav_msgs rclcpp Eigen3 PCL pcl_conversions cv_bridge )
+ament_target_dependencies(path_searching octomap  plan_env std_msgs visualization_msgs nav_msgs rclcpp Eigen3 PCL pcl_conversions cv_bridge )
 
 install(TARGETS path_searching
         DESTINATION lib
