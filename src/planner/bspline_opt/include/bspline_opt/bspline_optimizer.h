@@ -90,7 +90,6 @@ namespace ego_planner
     ~BsplineOptimizer() {}
 
     /* main API */
-    void setEnvironment(const std::shared_ptr<octomap::OcTree> octree_);
     void setEnvironment(const std::shared_ptr<octomap::OcTree> octree_, const fast_planner::ObjPredictor::Ptr mov_obj);
     void setParam(rclcpp::Node::SharedPtr node);
     Eigen::MatrixXd BsplineOptimizeTraj(const Eigen::MatrixXd &points, const double &ts,

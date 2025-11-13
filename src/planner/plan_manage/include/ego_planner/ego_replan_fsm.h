@@ -89,6 +89,7 @@ namespace ego_planner
     rclcpp::Subscription<traj_utils::msg::MultiBsplines>::SharedPtr swarm_trajs_sub_;
     rclcpp::Subscription<traj_utils::msg::Bspline>::SharedPtr broadcast_bspline_sub_;
     rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr trigger_sub_;
+    rclcpp::Subscription<octomap_msgs::msg::Octomap>::SharedPtr octomap_sub_;
 
     // rclcpp::Publisher<std_msgs::msg::Empty>::SharedPtr replan_pub_;
     // rclcpp::Publisher<std_msgs::msg::Empty>::SharedPtr new_pub_;
@@ -113,6 +114,7 @@ namespace ego_planner
     void getLocalTarget();
 
     /* ROS functions */
+    void octomapCallback(const std::shared_ptr<const octomap_msgs::msg::Octomap> &msg);
     void execFSMCallback();
     void checkCollisionCallback();
     void waypointCallback(const std::shared_ptr<const geometry_msgs::msg::PoseStamped> &msg);

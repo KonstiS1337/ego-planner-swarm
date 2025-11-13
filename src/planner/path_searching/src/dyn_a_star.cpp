@@ -239,3 +239,12 @@ bool AStar::AstarSearch(const double step_size, Vector3d start_pt, Vector3d end_
     retrievePath(goalNode,t_start,iter);
     return true;
 }        
+
+	std::vector<Eigen::Vector3d> AStar::getPath() {
+        std::vector<Eigen::Vector3d> result;
+        for(auto point: gridPath_) {
+            result.push_back(Eigen::Vector3d(point.x(),point.y(),point.z()));
+        }
+        return result;
+    }
+

@@ -33,10 +33,6 @@ namespace ego_planner
     node->get_parameter("optimization/order", order_);
   }
 
-  void BsplineOptimizer::setEnvironment(const std::shared_ptr<octomap::OcTree> map)
-  {
-    this->octree_ = map;
-  }
 
 bool BsplineOptimizer::isOccupied(const Eigen::Vector3d& p) {
     octomap::point3d temp(p.x(),p.y(),p.z());

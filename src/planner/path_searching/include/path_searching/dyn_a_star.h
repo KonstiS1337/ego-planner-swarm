@@ -68,7 +68,7 @@ public:
 
 	bool AstarSearch(const double step_size, Eigen::Vector3d start_pt, Eigen::Vector3d end_pt);
 
-	//std::vector<Eigen::Vector3d> getPath(); //TOO do i need this for the outside?
+	std::vector<Eigen::Vector3d> getPath();
 };
 
 

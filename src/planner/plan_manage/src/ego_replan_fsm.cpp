@@ -37,7 +37,7 @@ namespace ego_planner
     node_->declare_parameter("fsm/waypoint_num", -1);
     node_->get_parameter("fsm/waypoint_num", waypoint_num_);
 
-    for (int i = 0; i < waypoint_num_; i++)
+    for (int i = 0; i < waypoint_num_; i++) //TODO why is this done
     {
       node_->declare_parameter("fsm/waypoint" + to_string(i) + "_x", -1.0);
       node_->declare_parameter("fsm/waypoint" + to_string(i) + "_y", -1.0);
@@ -53,11 +53,18 @@ namespace ego_planner
 
     planner_manager_.reset(new EGOPlannerManager);
     planner_manager_->initPlanModules(node_, visualization_);
-    if(!planner_manager_->checkTreeInit()) return false;
     planner_manager_->deliverTrajToOptimizer(); // store trajectories
     planner_manager_->setDroneIdtoOpt();
 
     /* callback*/
+    octomap_sub_ = node_->create_subscription<octomap_msgs::msg::Octomap>(
+      "/octomap_infalted",
+      rclcpp::SensorDataQoS(),
+      [this](const std::shared_ptr<const octomap_msgs::msg::Octomap> &msg)
+      {
+        this->octomapCallback(msg);
+      });
+
     exec_timer_ = node_->create_wall_timer(std::chrono::milliseconds(10),
                                            std::bind(&EGOReplanFSM::execFSMCallback, this));
 
@@ -73,7 +80,7 @@ namespace ego_planner
         });
     // std::bind(&EGOReplanFSM::odometryCallback, this, std::placeholders::_1));
 
-    if (planner_manager_->pp_.drone_id >= 1)
+    if (planner_manager_->pp_.drone_id >= 1) //this is needed for multi drone planing -> ignoring for now
     {
       string sub_topic_name = string("/drone_") + std::to_string(planner_manager_->pp_.drone_id - 1) + string("_planning/swarm_trajs");
       swarm_trajs_sub_ = node_->create_subscription<traj_utils::msg::MultiBsplines>(
@@ -88,7 +95,7 @@ namespace ego_planner
     // ros2 中topic名字中不能出现负号，单机id是-1需要处理
     // string pub_topic_name = string("/drone_") + std::to_string(planner_manager_->pp_.drone_id) + string("_planning/swarm_trajs");
     string pub_topic_name;
-    if (planner_manager_->pp_.drone_id <= -1)
+    if (planner_manager_->pp_.drone_id <= -1) //this is needed for multi drone planing -> ignoring for now
     {
       RCLCPP_INFO(node_->get_logger(), "single drone:%d", planner_manager_->pp_.drone_id);
       pub_topic_name = string("/drone_") + "single" + string("_planning/swarm_trajs");
@@ -97,9 +104,9 @@ namespace ego_planner
       pub_topic_name = string("/drone_") + std::to_string(planner_manager_->pp_.drone_id) + string("_planning/swarm_trajs");
     }
     
-    swarm_trajs_pub_ = node_->create_publisher<traj_utils::msg::MultiBsplines>(pub_topic_name, 10);
+    swarm_trajs_pub_ = node_->create_publisher<traj_utils::msg::MultiBsplines>(pub_topic_name, 10); //this is the output if trajectories are planned for multiple drones
 
-    broadcast_bspline_pub_ = node_->create_publisher<traj_utils::msg::Bspline>("planning/broadcast_bspline_from_planner", 10);
+    broadcast_bspline_pub_ = node_->create_publisher<traj_utils::msg::Bspline>("planning/broadcast_bspline_from_planner", 10); //this seems like the output  -> perhaps this needs to be changed to an a2s interface
     broadcast_bspline_sub_ = node_->create_subscription<traj_utils::msg::Bspline>(
         "planning/broadcast_bspline_to_planner",
         100,
@@ -108,10 +115,10 @@ namespace ego_planner
           this->BroadcastBsplineCallback(msg);
         });
 
-    bspline_pub_ = node_->create_publisher<traj_utils::msg::Bspline>("planning/bspline", 10);
+    bspline_pub_ = node_->create_publisher<traj_utils::msg::Bspline>("planning/bspline", 10); //this seems to got to the trajectory server
     data_disp_pub_ = node_->create_publisher<traj_utils::msg::DataDisp>("planning/data_display", 100);
 
-    if (target_type_ == TARGET_TYPE::MANUAL_TARGET)
+    if (target_type_ == TARGET_TYPE::MANUAL_TARGET) //this seems to take a simple PoseStamped as a goal input
     {
       waypoint_sub_ = node_->create_subscription<geometry_msgs::msg::PoseStamped>(
           "/move_base_simple/goal",
@@ -153,6 +160,19 @@ namespace ego_planner
       cout << "Wrong target_type_ value! target_type_=" << target_type_ << endl;
     return true;
   }
+
+void EGOReplanFSM::octomapCallback(const std::shared_ptr<const octomap_msgs::msg::Octomap> &msg)
+  {
+    // Convert to octomap::OcTree
+    std::shared_ptr<octomap::OcTree> octree(dynamic_cast<octomap::OcTree *>(
+        octomap_msgs::msgToMap(*msg)));
+
+    if (octree)
+    {
+      planner_manager_->setOctomap(octree);
+    }
+  }
+
 
   void EGOReplanFSM::readGivenWps()
 
@@ -242,7 +262,10 @@ namespace ego_planner
     init_pt_ = odom_pos_;
 
     Eigen::Vector3d end_wp(msg->pose.position.x, msg->pose.position.y, 1.0);
-
+    if (!planner_manager_->isMapReady()) {
+      RCLCPP_WARN(node_->get_logger(), "No OctoMap available yet, skipping planning.");
+      return;
+    }
     planNextWaypoint(end_wp);
   }
 
@@ -563,6 +586,10 @@ namespace ego_planner
 
     case EXEC_TRAJ:
     {
+      if (!planner_manager_->isMapReady()) {
+        RCLCPP_WARN(node_->get_logger(), "No OctoMap available yet, skipping planning.");
+        return;
+      }
       /* determine if need to replan */
       LocalTrajData *info = &planner_manager_->local_data_;
       rclcpp::Time time_now = rclcpp::Clock().now();

@@ -41,11 +41,10 @@ namespace ego_planner
                                  const std::vector<Eigen::Vector3d> &waypoints, const Eigen::Vector3d &end_vel, const Eigen::Vector3d &end_acc);
 
     bool initPlanModules(rclcpp::Node::SharedPtr &node, PlanningVisualization::Ptr vis = NULL);
-
+    void setOctomap(const std::shared_ptr<octomap::OcTree> &octree);
     void deliverTrajToOptimizer(void) { bspline_optimizer_->setSwarmTrajs(&swarm_trajs_buf_); };
-    bool checkTreeInit();
     void setDroneIdtoOpt(void) { bspline_optimizer_->setDroneId(pp_.drone_id); }
-
+    bool isMapReady() const;
     double getSwarmClearance(void) { return bspline_optimizer_->getSwarmClearance(); }
 
     bool checkCollision(int drone_id);
@@ -59,7 +58,6 @@ namespace ego_planner
     SwarmTrajData swarm_trajs_buf_;
     private:
     std::shared_ptr<octomap::OcTree> octree_;
-    rclcpp::Subscription<octomap_msgs::msg::Octomap>::SharedPtr octo_sub_;
     /* main planning algorithms & modules */
     PlanningVisualization::Ptr visualization_;
     

@@ -83,7 +83,7 @@ target_link_libraries(ego_planner_node
 
 # Install targets
 install(
-  TARGETS ego_planner_node
+  TARGETS ego_planner_node 
   DESTINATION lib/${PROJECT_NAME}
 )
 

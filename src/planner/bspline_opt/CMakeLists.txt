@@ -54,6 +54,10 @@ add_library( bspline_opt
     src/gradient_descent_optimizer.cpp
     )
 
+target_link_libraries(bspline_opt
+    plan_env
+)
+
 ament_target_dependencies(bspline_opt 
                           std_msgs visualization_msgs 
                           nav_msgs cv_bridge 
@@ -71,5 +75,6 @@ install(DIRECTORY include/${PROJECT_NAME}/
 )
 
 ament_export_libraries(bspline_opt)
+ament_export_dependencies(plan_env)
 
 ament_package()
