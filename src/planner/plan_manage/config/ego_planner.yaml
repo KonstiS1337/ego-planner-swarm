@@ -1,0 +1,19 @@
+ego_planner_node:
+  ros__parameters:
+
+    # Motion constraints
+    manager/max_vel: 2.0               # m/s
+    manager/max_acc: 3.0               # m/s^2
+    manager/max_jerk: 5.0              # m/s^3
+
+    # Trajectory generation behavior
+    manager/feasibility_tolerance: 0.1
+    manager/control_points_distance: 1.0
+    manager/planning_horizon: 5.0
+
+    # Misc
+    manager/use_distinctive_trajs: false
+    manager/drone_id: 0
+
+    fsm/flight_type: 1
+

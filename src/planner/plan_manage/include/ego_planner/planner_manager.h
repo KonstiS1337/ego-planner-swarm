@@ -6,7 +6,6 @@
 #include <bspline_opt/bspline_optimizer.h>
 #include <bspline_opt/uniform_bspline.h>
 #include <traj_utils/msg/data_disp.hpp>
-#include <plan_env/grid_map.h>
 #include <octomap/octomap.h>
 #include <octomap_msgs/conversions.h>
 #include <octomap_msgs/msg/octomap.hpp>
@@ -53,7 +52,6 @@ namespace ego_planner
     PlanParameters pp_;
     LocalTrajData local_data_;
     GlobalTrajData global_data_;
-    GridMap::Ptr grid_map_;
     fast_planner::ObjPredictor::Ptr obj_predictor_;    
     SwarmTrajData swarm_trajs_buf_;
     private:

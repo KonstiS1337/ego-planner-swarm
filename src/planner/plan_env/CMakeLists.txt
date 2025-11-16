@@ -53,7 +53,6 @@ link_directories(${PCL_LIBRARY_DIRS})
 ament_export_include_directories(include)
 
 add_library( plan_env SHARED
-    src/grid_map.cpp 
     src/raycast.cpp
     src/obj_predictor.cpp 
     )

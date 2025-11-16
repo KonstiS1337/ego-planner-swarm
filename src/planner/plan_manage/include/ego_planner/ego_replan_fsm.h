@@ -13,7 +13,6 @@
 #include "visualization_msgs/msg/marker.hpp"
 
 #include "bspline_opt/bspline_optimizer.h"
-#include "plan_env/grid_map.h"
 #include "traj_utils/msg/bspline.hpp"
 #include "traj_utils/msg/multi_bsplines.hpp"
 #include "geometry_msgs/msg/pose_stamped.hpp"

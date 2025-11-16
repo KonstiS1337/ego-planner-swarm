@@ -58,7 +58,7 @@ namespace ego_planner
 
     /* callback*/
     octomap_sub_ = node_->create_subscription<octomap_msgs::msg::Octomap>(
-      "/octomap_infalted",
+      "/octomap_inflated",
       rclcpp::SensorDataQoS(),
       [this](const std::shared_ptr<const octomap_msgs::msg::Octomap> &msg)
       {
@@ -68,11 +68,11 @@ namespace ego_planner
     exec_timer_ = node_->create_wall_timer(std::chrono::milliseconds(10),
                                            std::bind(&EGOReplanFSM::execFSMCallback, this));
 
-    safety_timer_ = node_->create_wall_timer(std::chrono::milliseconds(50),
-                                             std::bind(&EGOReplanFSM::checkCollisionCallback, this));
+    // safety_timer_ = node_->create_wall_timer(std::chrono::milliseconds(50),
+    //                                          std::bind(&EGOReplanFSM::checkCollisionCallback, this));
 
-    odom_sub_ = node_->create_subscription<nav_msgs::msg::Odometry>(
-        "odom_world",
+    odom_sub_ = node_->create_subscription<nav_msgs::msg::Odometry>(//TODO make the topic configurable
+        "/drone0/odometry",
         1,
         [this](const std::shared_ptr<const nav_msgs::msg::Odometry> &msg)
         {
@@ -254,10 +254,10 @@ void EGOReplanFSM::octomapCallback(const std::shared_ptr<const octomap_msgs::msg
 
   void EGOReplanFSM::waypointCallback(const std::shared_ptr<const geometry_msgs::msg::PoseStamped> &msg)
   {
+    RCLCPP_INFO(node_->get_logger(),"Triggered!");
     if (msg->pose.position.z < -0.1)
       return;
 
-    cout << "Triggered!" << endl;
 
     init_pt_ = odom_pos_;
 
@@ -723,89 +723,89 @@ void EGOReplanFSM::octomapCallback(const std::shared_ptr<const octomap_msgs::msg
     return true;
   }
 
-  void EGOReplanFSM::checkCollisionCallback()
-  {
+  // void EGOReplanFSM::checkCollisionCallback()
+  // {
 
-    LocalTrajData *info = &planner_manager_->local_data_;
-    auto map = planner_manager_->grid_map_;
+  //   LocalTrajData *info = &planner_manager_->local_data_;
+  //   auto map = planner_manager_->grid_map_;
     
-    if (exec_state_ == WAIT_TARGET || info->start_time_.seconds() < 1e-5)
-      return;
+  //   if (exec_state_ == WAIT_TARGET || info->start_time_.seconds() < 1e-5)
+  //     return;
 
-    /* ---------- check lost of depth ---------- */
-    if (map->getOdomDepthTimeout())
-    {
-      RCLCPP_ERROR(node_->get_logger(), "Depth Lost! EMERGENCY_STOP");
+  //   /* ---------- check lost of depth ---------- */
+  //   if (map->getOdomDepthTimeout())
+  //   {
+  //     RCLCPP_ERROR(node_->get_logger(), "Depth Lost! EMERGENCY_STOP");
 
-      enable_fail_safe_ = false;
-      changeFSMExecState(EMERGENCY_STOP, "SAFETY");
-    }
+  //     enable_fail_safe_ = false;
+  //     changeFSMExecState(EMERGENCY_STOP, "SAFETY");
+  //   }
 
-    /* ---------- check trajectory ---------- */
-    constexpr double time_step = 0.01;
-    // double t_cur = (ros::Time::now() - info->start_time_).toSec();
-    double t_cur = (rclcpp::Clock().now() - info->start_time_).seconds();
+  //   /* ---------- check trajectory ---------- */
+  //   constexpr double time_step = 0.01;
+  //   // double t_cur = (ros::Time::now() - info->start_time_).toSec();
+  //   double t_cur = (rclcpp::Clock().now() - info->start_time_).seconds();
 
-    Eigen::Vector3d p_cur = info->position_traj_.evaluateDeBoorT(t_cur);
-    const double CLEARANCE = 1.0 * planner_manager_->getSwarmClearance();
-    // double t_cur_global = ros::Time::now().toSec();
-    double t_cur_global = rclcpp::Clock().now().seconds();
+  //   Eigen::Vector3d p_cur = info->position_traj_.evaluateDeBoorT(t_cur);
+  //   const double CLEARANCE = 1.0 * planner_manager_->getSwarmClearance();
+  //   // double t_cur_global = ros::Time::now().toSec();
+  //   double t_cur_global = rclcpp::Clock().now().seconds();
 
-    double t_2_3 = info->duration_ * 2 / 3;
-    for (double t = t_cur; t < info->duration_; t += time_step)
-    {
-      if (t_cur < t_2_3 && t >= t_2_3) // If t_cur < t_2_3, only the first 2/3 partition of the trajectory is considered valid and will get checked.
-        break;
+  //   double t_2_3 = info->duration_ * 2 / 3;
+  //   for (double t = t_cur; t < info->duration_; t += time_step)
+  //   {
+  //     if (t_cur < t_2_3 && t >= t_2_3) // If t_cur < t_2_3, only the first 2/3 partition of the trajectory is considered valid and will get checked.
+  //       break;
 
-      bool occ = false;
-      occ |= map->getInflateOccupancy(info->position_traj_.evaluateDeBoorT(t));
+  //     bool occ = false;
+  //     occ |= map->getInflateOccupancy(info->position_traj_.evaluateDeBoorT(t));
 
-      for (size_t id = 0; id < planner_manager_->swarm_trajs_buf_.size(); id++)
-      {
-        if ((planner_manager_->swarm_trajs_buf_.at(id).drone_id != (int)id) || (planner_manager_->swarm_trajs_buf_.at(id).drone_id == planner_manager_->pp_.drone_id))
-        {
-          continue;
-        }
+  //     for (size_t id = 0; id < planner_manager_->swarm_trajs_buf_.size(); id++)
+  //     {
+  //       if ((planner_manager_->swarm_trajs_buf_.at(id).drone_id != (int)id) || (planner_manager_->swarm_trajs_buf_.at(id).drone_id == planner_manager_->pp_.drone_id))
+  //       {
+  //         continue;
+  //       }
 
-        double t_X = t_cur_global - planner_manager_->swarm_trajs_buf_.at(id).start_time_.seconds();
-        Eigen::Vector3d swarm_pridicted = planner_manager_->swarm_trajs_buf_.at(id).position_traj_.evaluateDeBoorT(t_X);
-        double dist = (p_cur - swarm_pridicted).norm();
+  //       double t_X = t_cur_global - planner_manager_->swarm_trajs_buf_.at(id).start_time_.seconds();
+  //       Eigen::Vector3d swarm_pridicted = planner_manager_->swarm_trajs_buf_.at(id).position_traj_.evaluateDeBoorT(t_X);
+  //       double dist = (p_cur - swarm_pridicted).norm();
 
-        if (dist < CLEARANCE)
-        {
-          occ = true;
-          break;
-        }
-      }
+  //       if (dist < CLEARANCE)
+  //       {
+  //         occ = true;
+  //         break;
+  //       }
+  //     }
 
-      if (occ)
-      {
+  //     if (occ)
+  //     {
 
-        if (planFromCurrentTraj()) // Make a chance
-        {
-          changeFSMExecState(EXEC_TRAJ, "SAFETY");
-          publishSwarmTrajs(false);
-          return;
-        }
-        else
-        {
-          if (t - t_cur < emergency_time_) // 0.8s of emergency time
-          {
-            RCLCPP_WARN(node_->get_logger(), "Suddenly discovered obstacles. emergency stop! time=%f", t - t_cur);
+  //       if (planFromCurrentTraj()) // Make a chance
+  //       {
+  //         changeFSMExecState(EXEC_TRAJ, "SAFETY");
+  //         publishSwarmTrajs(false);
+  //         return;
+  //       }
+  //       else
+  //       {
+  //         if (t - t_cur < emergency_time_) // 0.8s of emergency time
+  //         {
+  //           RCLCPP_WARN(node_->get_logger(), "Suddenly discovered obstacles. emergency stop! time=%f", t - t_cur);
 
-            changeFSMExecState(EMERGENCY_STOP, "SAFETY");
-          }
-          else
-          {
-            RCLCPP_WARN(node_->get_logger(), "current traj in collision, replan.");
-            changeFSMExecState(REPLAN_TRAJ, "SAFETY");
-          }
-          return;
-        }
-        break;
-      }
-    }
-  }
+  //           changeFSMExecState(EMERGENCY_STOP, "SAFETY");
+  //         }
+  //         else
+  //         {
+  //           RCLCPP_WARN(node_->get_logger(), "current traj in collision, replan.");
+  //           changeFSMExecState(REPLAN_TRAJ, "SAFETY");
+  //         }
+  //         return;
+  //       }
+  //       break;
+  //     }
+  //   }
+  // }
 
   bool EGOReplanFSM::callReboundReplan(bool flag_use_poly_init, bool flag_randomPolyTraj)
   {
