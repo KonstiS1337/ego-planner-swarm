@@ -39,7 +39,7 @@ namespace ego_planner
       global_traj_.init();
       global_duration_ = global_traj_.getTimeSum();
       global_start_time_ = time;
-
+      RCLCPP_INFO(rclcpp::get_logger("GlobalTrajData"), "reset local traj data.");
       local_traj_.clear();
       local_start_time_ = -1;
       local_end_time_ = -1;
@@ -50,6 +50,7 @@ namespace ego_planner
 
     void setLocalTraj(UniformBspline traj, double local_ts, double local_te, double time_inc)
     {
+      RCLCPP_INFO(rclcpp::get_logger("GlobalTrajData"), "set local traj data.");
       local_traj_.resize(3);
       local_traj_[0] = traj;
       local_traj_[1] = local_traj_[0].getDerivative();
@@ -202,6 +203,7 @@ namespace ego_planner
     double time_search_ = 0.0;
     double time_optimize_ = 0.0;
     double time_adjust_ = 0.0;
+    double obstacle_inflation_ = 0.0; // meters
   };
 
   struct LocalTrajData

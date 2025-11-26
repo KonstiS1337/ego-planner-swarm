@@ -34,10 +34,48 @@ namespace ego_planner
   }
 
 
-bool BsplineOptimizer::isOccupied(const Eigen::Vector3d& p) {
-    octomap::point3d temp(p.x(),p.y(),p.z());
-    auto node = octree_->search(temp);
-    return node && octree_->isNodeOccupied(node);
+bool BsplineOptimizer::isOccupied(const Eigen::Vector3d& p)
+{
+  if (!octree_)
+    return false;
+
+  const double res = octree_->getResolution();
+
+  // Effective inflation radius:
+  //  - if user set inflate_radius_ > 0 ⇒ use it
+  //  - otherwise default to 2 * resolution
+  const double radius = (inflate_radius_ > 0.0) ? inflate_radius_ : 2.0 * res;
+
+  // Number of cells to check around the query point in each axis
+  const int n = static_cast<int>(std::ceil(radius / res));
+
+  const double px = p.x();
+  const double py = p.y();
+  const double pz = p.z();
+
+  // Loop over a small cube around p and see if ANY voxel is occupied
+  for (int ix = -n; ix <= n; ++ix)
+  {
+    for (int iy = -n; iy <= n; ++iy)
+    {
+      for (int iz = -n; iz <= n; ++iz)
+      {
+        const octomap::point3d q(
+            static_cast<float>(px + ix * res),
+            static_cast<float>(py + iy * res),
+            static_cast<float>(pz + iz * res));
+
+        auto node = octree_->search(q);
+        if (node && octree_->isNodeOccupied(node))
+        {
+          // Inflated occupied: some voxel in the inflation ball is occupied.
+          return true;
+        }
+      }
+    }
+  }
+
+  return false;
 }
 
   void BsplineOptimizer::setEnvironment(const std::shared_ptr<octomap::OcTree> map, const fast_planner::ObjPredictor::Ptr mov_obj)

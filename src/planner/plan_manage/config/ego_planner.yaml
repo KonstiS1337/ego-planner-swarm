@@ -16,4 +16,11 @@ ego_planner_node:
     manager/drone_id: 0
 
     fsm/flight_type: 1
+    fsm/thresh_replan_time: 1.5
+    fsm/thresh_no_replan_meter: 2.0
+    fsm/planning_horizon: 5.0
+    fsm/planning_horizen_time: 3.0
+    fsm/emergency_time: 1.0
+    fsm/realworld_experiment: false
+    fsm/fail_safe: false
 

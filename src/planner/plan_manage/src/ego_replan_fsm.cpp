@@ -31,6 +31,16 @@ namespace ego_planner
     node_->get_parameter("fsm/emergency_time", emergency_time_);
     node_->get_parameter("fsm/realworld_experiment", flag_realworld_experiment_);
     node_->get_parameter("fsm/fail_safe", enable_fail_safe_);
+    //TODO remove
+    RCLCPP_INFO(node_->get_logger(), "FSM Parameters:");
+    RCLCPP_INFO(node_->get_logger(), "  flight_type              = %d", target_type_);
+    RCLCPP_INFO(node_->get_logger(), "  thresh_replan_time       = %.3f", replan_thresh_);
+    RCLCPP_INFO(node_->get_logger(), "  thresh_no_replan_meter   = %.3f", no_replan_thresh_);
+    RCLCPP_INFO(node_->get_logger(), "  planning_horizon         = %.3f", planning_horizen_);
+    RCLCPP_INFO(node_->get_logger(), "  planning_horizen_time    = %.3f", planning_horizen_time_);
+    RCLCPP_INFO(node_->get_logger(), "  emergency_time           = %.3f", emergency_time_);
+    RCLCPP_INFO(node_->get_logger(), "  realworld_experiment     = %s", flag_realworld_experiment_ ? "true" : "false");
+    RCLCPP_INFO(node_->get_logger(), "  fail_safe                = %s", enable_fail_safe_ ? "true" : "false");
 
     have_trigger_ = !flag_realworld_experiment_;
 

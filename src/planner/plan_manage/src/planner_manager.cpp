@@ -12,41 +12,52 @@ namespace ego_planner
   
   EGOPlannerManager::~EGOPlannerManager() {}
 
-  bool EGOPlannerManager::initPlanModules(rclcpp::Node::SharedPtr &node, PlanningVisualization::Ptr vis)
-  {
-    node->declare_parameter("manager/max_vel", -1.0);
-    node->declare_parameter("manager/max_acc", -1.0);
-    node->declare_parameter("manager/max_jerk", -1.0);
-    node->declare_parameter("manager/feasibility_tolerance", 0.0);
-    node->declare_parameter("manager/control_points_distance", -1.0);
-    node->declare_parameter("manager/planning_horizon", 5.0);
-    node->declare_parameter("manager/use_distinctive_trajs", false);
-    node->declare_parameter("manager/drone_id", -1);
-    
-    node->get_parameter("manager/max_vel", pp_.max_vel_);
-    node->get_parameter("manager/max_acc", pp_.max_acc_);
-    node->get_parameter("manager/max_jerk", pp_.max_jerk_);
-    node->get_parameter("manager/feasibility_tolerance", pp_.feasibility_tolerance_);
-    node->get_parameter("manager/control_points_distance", pp_.ctrl_pt_dist);
-    node->get_parameter("manager/planning_horizon", pp_.planning_horizen_);
-    node->get_parameter("manager/use_distinctive_trajs", pp_.use_distinctive_trajs);
-    node->get_parameter("manager/drone_id", pp_.drone_id);
-    
-    local_data_.traj_id_ = 0;
-    
-    if (!octree_) {
-    RCLCPP_WARN(node->get_logger(), "Planner initialized before receiving OctoMap.");
-    }
-    bspline_optimizer_.reset(new BsplineOptimizer);
-    bspline_optimizer_->setParam(node);
-    
-    bspline_optimizer_->setEnvironment(octree_, obj_predictor_);
-    bspline_optimizer_->a_star_.reset(new AStar);
-    bspline_optimizer_->a_star_->initOctree(octree_);
+bool EGOPlannerManager::initPlanModules(rclcpp::Node::SharedPtr &node, PlanningVisualization::Ptr vis)
+{
+  node->declare_parameter("manager/max_vel", -1.0);
+  node->declare_parameter("manager/max_acc", -1.0);
+  node->declare_parameter("manager/max_jerk", -1.0);
+  node->declare_parameter("manager/feasibility_tolerance", 0.0);
+  node->declare_parameter("manager/control_points_distance", -1.0);
+  node->declare_parameter("manager/planning_horizon", 5.0);
+  node->declare_parameter("manager/use_distinctive_trajs", false);
+  node->declare_parameter("manager/drone_id", -1);
 
-    visualization_ = vis;
-    return true;
+  // NEW PARAM
+  node->declare_parameter("manager/obstacle_inflation", 0.3);   // default inflation radius
+
+  node->get_parameter("manager/max_vel", pp_.max_vel_);
+  node->get_parameter("manager/max_acc", pp_.max_acc_);
+  node->get_parameter("manager/max_jerk", pp_.max_jerk_);
+  node->get_parameter("manager/feasibility_tolerance", pp_.feasibility_tolerance_);
+  node->get_parameter("manager/control_points_distance", pp_.ctrl_pt_dist);
+  node->get_parameter("manager/planning_horizon", pp_.planning_horizen_);
+  node->get_parameter("manager/use_distinctive_trajs", pp_.use_distinctive_trajs);
+  node->get_parameter("manager/drone_id", pp_.drone_id);
+
+  // NEW PARAM
+  node->get_parameter("manager/obstacle_inflation", pp_.obstacle_inflation_);
+
+  local_data_.traj_id_ = 0;
+
+  if (!octree_) {
+    RCLCPP_WARN(node->get_logger(), "Planner initialized before receiving OctoMap.");
   }
+
+  bspline_optimizer_.reset(new BsplineOptimizer);
+  bspline_optimizer_->setParam(node);
+
+  bspline_optimizer_->setEnvironment(octree_, obj_predictor_);
+
+  // NEW: apply inflated obstacle radius
+  bspline_optimizer_->setInflateRadius(pp_.obstacle_inflation_);
+
+  bspline_optimizer_->a_star_.reset(new AStar);
+  bspline_optimizer_->a_star_->initOctree(octree_);
+
+  visualization_ = vis;
+  return true;
+}
 
   bool EGOPlannerManager::isMapReady() const
   {

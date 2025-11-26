@@ -90,13 +90,21 @@ namespace ego_planner
     ~BsplineOptimizer() {}
 
     /* main API */
-    void setEnvironment(const std::shared_ptr<octomap::OcTree> octree_, const fast_planner::ObjPredictor::Ptr mov_obj);
     void setParam(rclcpp::Node::SharedPtr node);
     Eigen::MatrixXd BsplineOptimizeTraj(const Eigen::MatrixXd &points, const double &ts,
                                         const int &cost_function, int max_num_id, int max_time_id);
 
     /* helper function */
+      // Set obstacle inflation radius (meters).
+    // This is the "safety margin" around occupied octomap cells.
+    inline void setInflateRadius(double r) { inflate_radius_ = r; }
 
+    // Environment setup (OctoMap)
+    void setEnvironment(const std::shared_ptr<octomap::OcTree> map,
+                        const fast_planner::ObjPredictor::Ptr mov_obj);
+
+    // Inflated occupancy query (used everywhere).
+    bool isOccupied(const Eigen::Vector3d& p);
     // required inputs
     void setControlPoints(const Eigen::MatrixXd &points);
     void setBsplineInterval(const double &ts);
@@ -126,9 +134,11 @@ namespace ego_planner
     inline double getSwarmClearance(void) { return swarm_clearance_; }
 
   private:
-    bool isOccupied(const Eigen::Vector3d& p);
-
     std::shared_ptr<octomap::OcTree> octree_;
+    fast_planner::ObjPredictor::Ptr mov_obj_;
+
+    // If <= 0, falls back to a small multiple of octree resolution.
+    double inflate_radius_ = 0.0;
     fast_planner::ObjPredictor::Ptr moving_objs_;
     SwarmTrajData *swarm_trajs_{NULL}; // Can not use shared_ptr and no need to free
     int drone_id_;
