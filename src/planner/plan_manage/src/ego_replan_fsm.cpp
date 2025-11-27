@@ -64,11 +64,11 @@ namespace ego_planner
 
     safety_timer_ = node_->create_wall_timer(std::chrono::milliseconds(50),
                                              std::bind(&EGOReplanFSM::checkCollisionCallback, this));
-
-    odom_sub_ = node_->create_subscription<nav_msgs::msg::Odometry>(
+    rclcpp::QoS qos = rclcpp::QoS(10).best_effort();
+    odom_sub_ = node_->create_subscription<px4_msgs::msg::VehicleOdometry>(
         "odom_world",
-        1,
-        [this](const std::shared_ptr<const nav_msgs::msg::Odometry> &msg)
+        qos,
+        [this](const std::shared_ptr<const px4_msgs::msg::VehicleOdometry> &msg)
         {
           this->odometryCallback(msg);
         });
@@ -246,22 +246,21 @@ namespace ego_planner
     planNextWaypoint(end_wp);
   }
 
-  void EGOReplanFSM::odometryCallback(const std::shared_ptr<const nav_msgs::msg::Odometry> &msg)
+  void EGOReplanFSM::odometryCallback(const std::shared_ptr<const px4_msgs::msg::VehicleOdometry> &msg)
   {
-    odom_pos_(0) = msg->pose.pose.position.x;
-    odom_pos_(1) = msg->pose.pose.position.y;
-    odom_pos_(2) = msg->pose.pose.position.z;
+    odom_pos_(0) = msg->position[0];
+    odom_pos_(1) = msg->position[1];
+    odom_pos_(2) = msg->position[2];
 
-    odom_vel_(0) = msg->twist.twist.linear.x;
-    odom_vel_(1) = msg->twist.twist.linear.y;
-    odom_vel_(2) = msg->twist.twist.linear.z;
-
+    odom_vel_(0) = msg->velocity[0];
+    odom_vel_(1) = msg->velocity[1];
+    odom_vel_(2) = msg->velocity[2];
     // odom_acc_ = estimateAcc( msg );
 
-    odom_orient_.w() = msg->pose.pose.orientation.w;
-    odom_orient_.x() = msg->pose.pose.orientation.x;
-    odom_orient_.y() = msg->pose.pose.orientation.y;
-    odom_orient_.z() = msg->pose.pose.orientation.z;
+    odom_orient_.w() = msg->q[0];
+    odom_orient_.x() = msg->q[1];
+    odom_orient_.y() = msg->q[2];
+    odom_orient_.z() = msg->q[3];
 
     have_odom_ = true;
   }

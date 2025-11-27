@@ -1,0 +1,43 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+
+        {
+
+            "name": "Debug ego_planner_node",
+            "type": "cppdbg",
+            "request": "launch",
+
+            "program": "/opt/ros/jazzy/bin/ros2",
+            "args": [
+                "run",
+                "ego_planner",
+                "ego_planner_node",
+                "-r __node:=drone_0_ego_planner_node --params-file /tmp/launch_params_l2tg_ofm --params-file /tmp/launch_params_5go9jtsx --params-file /tmp/launch_params_c2c18q1l --params-file /tmp/launch_params_o4rvjqbe --params-file /tmp/launch_params_f82gyq7h --params-file /tmp/launch_params_7hwe1cyx --params-file /tmp/launch_params_xp2pfa2g --params-file /tmp/launch_params_3_0x5tbk --params-file /tmp/launch_params_ohgn8_fw --params-file /tmp/launch_params_mcxybs6u --params-file /tmp/launch_params_o09xf_ry --params-file /tmp/launch_params_5e4q97bj --params-file /tmp/launch_params_z08ssvtl --params-file /tmp/launch_params_j3hlpw0m --params-file /tmp/launch_params_28vtwxum --params-file /tmp/launch_params_gl4eiahu --params-file /tmp/launch_params_btcurra4 --params-file /tmp/launch_params_r9fnlgrm --params-file /tmp/launch_params_khcw6b57 --params-file /tmp/launch_params_simutrq_ --params-file /tmp/launch_params_1dhv1mzn --params-file /tmp/launch_params_65hsax6c --params-file /tmp/launch_params_p1oz36mu --params-file /tmp/launch_params_wh8r7rmr --params-file /tmp/launch_params_ouqklnfo --params-file /tmp/launch_params_72j_w2rf --params-file /tmp/launch_params_6ehgfnzc --params-file /tmp/launch_params_rtucupog --params-file /tmp/launch_params_52jxm9sz --params-file /tmp/launch_params_y2x6u9_t --params-file /tmp/launch_params_w8dti_x8 --params-file /tmp/launch_params_0isbnoln --params-file /tmp/launch_params_6hfg1u_q --params-file /tmp/launch_params_9ie6lb9b --params-file /tmp/launch_params_elrf_4yv --params-file /tmp/launch_params_eqeedx6x --params-file /tmp/launch_params_gdtal9y3 --params-file /tmp/launch_params_sdpd0sjj --params-file /tmp/launch_params_2mn5vwr7 --params-file /tmp/launch_params_0l66vwvk --params-file /tmp/launch_params_xhvp52z7 --params-file /tmp/launch_params_8v0hk909 --params-file /tmp/launch_params_uuq1g8pp --params-file /tmp/launch_params_if3uvl2c --params-file /tmp/launch_params_pkz610xx --params-file /tmp/launch_params_g7o9smwx --params-file /tmp/launch_params_2uemgzy0 --params-file /tmp/launch_params_ypj_weys --params-file /tmp/launch_params_qlyhtu_b --params-file /tmp/launch_params_rpfhq_1r --params-file /tmp/launch_params_l4nwdg5a --params-file /tmp/launch_params_esxb65sh --params-file /tmp/launch_params_me7u0ixp --params-file /tmp/launch_params_pwqmbh6u --params-file /tmp/launch_params_0ncvzeso --params-file /tmp/launch_params_dxyl0zca --params-file /tmp/launch_params_kow4ey8e --params-file /tmp/launch_params_1n98spmj --params-file /tmp/launch_params_w6tyfugr --params-file /tmp/launch_params_ckg_3ec0 --params-file /tmp/launch_params_3r7h1tm1 --params-file /tmp/launch_params_aw3pxs4m --params-file /tmp/launch_params_8xfwgjby --params-file /tmp/launch_params_aw9kaxe_ --params-file /tmp/launch_params_omdzovsh --params-file /tmp/launch_params_bjcdefqz --params-file /tmp/launch_params_rlh9f1ya --params-file /tmp/launch_params_47_djak7 --params-file /tmp/launch_params_0ezv6vn9 --params-file /tmp/launch_params_zvxsdepv --params-file /tmp/launch_params_mxugz29m --params-file /tmp/launch_params_dadekczl --params-file /tmp/launch_params_u9a4u6qt --params-file /tmp/launch_params_fcsknr5q --params-file /tmp/launch_params_6vtqrbpj --params-file /tmp/launch_params_1prexw1e --params-file /tmp/launch_params_s7x70nmq --params-file /tmp/launch_params_5759u7rd --params-file /tmp/launch_params_2q1oegdv -r odom_world:=drone_0_/drone0/fmu/out/vehicle_odometry -r planning/bspline:=drone_0_planning/bspline -r planning/data_display:=drone_0_planning/data_display -r planning/broadcast_bspline_from_planner:=/broadcast_bspline -r planning/broadcast_bspline_to_planner:=/broadcast_bspline -r goal_point:=drone_0_plan_vis/goal_point -r global_list:=drone_0_plan_vis/global_list -r init_list:=drone_0_plan_vis/init_list -r optimal_list:=drone_0_plan_vis/optimal_list -r a_star_list:=drone_0_plan_vis/a_star_list -r grid_map/odom:=drone_0_/drone0/fmu/out/vehicle_odometry -r grid_map/cloud:=drone_0_pcl_render_node/cloud -r grid_map/pose:=drone_0_pcl_render_node/camera_pose -r grid_map/depth:=drone_0_pcl_render_node/depth -r grid_map/occupancy_inflate:=drone_0_grid/grid_map/occupancy_inflate''"
+            ],
+
+            "stopAtEntry": false,
+
+            "cwd": "${workspaceFolder}",
+
+
+            "externalConsole": true,
+
+            "MIMode": "gdb",
+            "miDebuggerPath": "/usr/bin/gdb",
+
+            "setupCommands": [
+                { "text": "-enable-pretty-printing" }
+            ],
+            "stopAtEntry": true,
+            "launchCompleteCommand": "exec-run",
+            "stopAtConnect": false,
+            "filterStdout": true,
+            "filterStderr": false,
+            "stopOnSolibEvents": true,
+            "exceptionBreakpoints": {
+                "cpp_throw": "Y"
+            }
+        }
+    ]
+}

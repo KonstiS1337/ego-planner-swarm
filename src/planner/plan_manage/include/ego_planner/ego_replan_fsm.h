@@ -5,12 +5,12 @@
 #include <algorithm>
 #include <iostream>
 #include "nav_msgs/msg/path.hpp"
-#include "nav_msgs/msg/odometry.hpp"
 #include "sensor_msgs/msg/imu.hpp"
 #include "rclcpp/rclcpp.hpp"
 #include "std_msgs/msg/empty.hpp"
 #include <vector>
 #include "visualization_msgs/msg/marker.hpp"
+#include "px4_msgs/msg/vehicle_odometry.hpp"
 
 #include "bspline_opt/bspline_optimizer.h"
 #include "plan_env/grid_map.h"
@@ -85,7 +85,7 @@ namespace ego_planner
     rclcpp::TimerBase::SharedPtr exec_timer_, safety_timer_;
 
     rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr waypoint_sub_;
-    rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr odom_sub_;
+    rclcpp::Subscription<px4_msgs::msg::VehicleOdometry>::SharedPtr odom_sub_;
     rclcpp::Subscription<traj_utils::msg::MultiBsplines>::SharedPtr swarm_trajs_sub_;
     rclcpp::Subscription<traj_utils::msg::Bspline>::SharedPtr broadcast_bspline_sub_;
     rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr trigger_sub_;
@@ -117,7 +117,7 @@ namespace ego_planner
     void checkCollisionCallback();
     void waypointCallback(const std::shared_ptr<const geometry_msgs::msg::PoseStamped> &msg);
     void triggerCallback(const std::shared_ptr<const geometry_msgs::msg::PoseStamped> &msg);
-    void odometryCallback(const std::shared_ptr<const nav_msgs::msg::Odometry> &msg);
+    void odometryCallback(const std::shared_ptr<const px4_msgs::msg::VehicleOdometry> &msg);
     void swarmTrajsCallback(const std::shared_ptr<const traj_utils::msg::MultiBsplines> &msg);
     void BroadcastBsplineCallback(const std::shared_ptr<const traj_utils::msg::Bspline> &msg);
 

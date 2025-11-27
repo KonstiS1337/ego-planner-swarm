@@ -18,7 +18,7 @@ def generate_launch_description():
     target_y = LaunchConfiguration('target_y', default=20.0)
     target_z = LaunchConfiguration('target_z', default=1.0)
     drone_id = LaunchConfiguration('drone_id', default=0)
-    odom_topic = LaunchConfiguration('odom_topic', default='visual_slam/odom')
+    odom_topic = LaunchConfiguration('odom_topic', default='/drone0/fmu/out/vehicle_odometry')
     obj_num = LaunchConfiguration('obj_num', default=10)
 
     # DeclareLaunchArgument definitions
@@ -85,35 +85,35 @@ def generate_launch_description():
     )
 
     # Trajectory server node
-    traj_server_node = Node(
-        package='ego_planner',
-        executable='traj_server',
-        name=['drone_', drone_id, '_traj_server'],
-        output='screen',
-        remappings=[
-            ('position_cmd', ['drone_', drone_id, '_planning/pos_cmd']),
-            ('planning/bspline', ['drone_', drone_id, '_planning/bspline'])
-        ],
-        parameters=[
-            {'traj_server/time_forward': 1.0}
-        ]
-    )
+    # traj_server_node = Node(
+    #     package='ego_planner',
+    #     executable='traj_server',
+    #     name=['drone_', drone_id, '_traj_server'],
+    #     output='screen',
+    #     remappings=[
+    #         ('position_cmd', ['drone_', drone_id, '_planning/pos_cmd']),
+    #         ('planning/bspline', ['drone_', drone_id, '_planning/bspline'])
+    #     ],
+    #     parameters=[
+    #         {'traj_server/time_forward': 1.0}
+    #     ]
+    # )
 
-    # Include simulator 
-    simulator_include = IncludeLaunchDescription(PythonLaunchDescriptionSource(
-        os.path.join(get_package_share_directory('ego_planner'), 'launch', 'simulator.launch.py')),
-        launch_arguments={
-            'use_dynamic_cmd': use_dynamic,
-            'drone_id': drone_id,
-            'map_size_x_': map_size_x,
-            'map_size_y_': map_size_y,
-            'map_size_z_': map_size_z,
-            'init_x_': init_x,
-            'init_y_': init_y,
-            'init_z_': init_z,
-            'odometry_topic': odom_topic
-        }.items()
-    )
+    # # Include simulator 
+    # simulator_include = IncludeLaunchDescription(PythonLaunchDescriptionSource(
+    #     os.path.join(get_package_share_directory('ego_planner'), 'launch', 'simulator.launch.py')),
+    #     launch_arguments={
+    #         'use_dynamic_cmd': use_dynamic,
+    #         'drone_id': drone_id,
+    #         'map_size_x_': map_size_x,
+    #         'map_size_y_': map_size_y,
+    #         'map_size_z_': map_size_z,
+    #         'init_x_': init_x,
+    #         'init_y_': init_y,
+    #         'init_z_': init_z,
+    #         'odometry_topic': odom_topic
+    #     }.items()
+    # )
 
     # Object generator node
     obj_generator_node = Node(
@@ -158,8 +158,8 @@ def generate_launch_description():
 
     # Add nodes and includes
     ld.add_action(advanced_param_include)
-    ld.add_action(traj_server_node)
-    ld.add_action(simulator_include)
-    # ld.add_action(obj_generator_node)    
+    # ld.add_action(traj_server_node)
+    #ld.add_action(simulator_include)
+    ld.add_action(obj_generator_node)    
 
     return ld

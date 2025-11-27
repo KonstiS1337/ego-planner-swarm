@@ -23,6 +23,7 @@ find_package(path_searching REQUIRED)
 find_package(bspline_opt REQUIRED)
 find_package(traj_utils REQUIRED COMPONENTS traj_utils_lib)
 find_package(cv_bridge REQUIRED)
+find_package(px4_msgs REQUIRED)
 
 find_package(Eigen3 REQUIRED)
 find_package(PCL REQUIRED)
@@ -62,7 +63,7 @@ ament_target_dependencies(ego_planner_node
                           geometry_msgs quadrotor_msgs 
                           plan_env path_searching 
                           bspline_opt traj_utils 
-                          cv_bridge pcl_conversions )
+                          cv_bridge pcl_conversions px4_msgs)
 
 find_library(TRAJ_UTILS_LIB traj_utils_lib PATHS ${traj_utils_LIBRARY_DIRS})
 
@@ -89,6 +90,11 @@ install(
 install(
   DIRECTORY launch/
   DESTINATION share/${PROJECT_NAME}/launch
+)
+
+install(
+  DIRECTORY config/
+  DESTINATION share/${PROJECT_NAME}/config
 )
 
 ament_package()
